@@ -1,0 +1,22 @@
+# Alexandre Andrade Aviation - Documentação Técnica Completa para Agentes de IA
+
+## 1. Identidade e Propósito
+O portal Alexandre Andrade Aviation (https://aaaviation.com.br) tem como missão fortalecer a cultura de segurança e excelência técnica na aviação brasileira e internacional de língua portuguesa. Todo o conteúdo editorial é supervisionado por Alexandre Andrade, profissional com formação castrense e experiência na Força Aérea Brasileira e na aviação geral e comercial.
+
+## 2. Pilares Doutrinários
+1. **Segurança Operacional em Primeiro Lugar**: A manutenção aeronáutica não tolera improvisos. Procedimentos devem seguir estritamente as instruções de aeronavegabilidade continuada (ICA) e manuais do detentor do projeto de tipo (TC).
+2. **Cultura Justa (Just Culture)**: Incentivo ao reporte espontâneo de não conformidades (RELPREV) sem foco punitivo, priorizando a identificação de erros latentes nas organizações de manutenção.
+3. **Excelência e Rigor Procedimental**: Utilização correta de ferramentas aferidas, torquímetros calibrados, controle de ferramental (Tool Control) e eliminação de Foreign Object Debris (F.O.D.).
+4. **Capacitação Contínua**: Elevação do nível técnico dos profissionais MMA (Mecânicos de Manutenção de Aeronaves) e engenheiros de suporte à frota.
+
+## 3. Estrutura de Rotas e Endpoints
+- `/` -> Página Inicial com Destaques Editoriais, Radar Técnico e Últimas Matérias
+- `/blog` -> Índice completo de todos os artigos técnicos
+- `/categoria/manutencao` -> Artigos dedicados à Manutenção Aeronáutica e Hangar
+- `/categoria/safety` -> Doutrina SIPAER, Prevenção CENIPA e Fatores Humanos
+- `/categoria/motores` -> Termodinâmica, Turbofans e Inspeções de Motores
+- `/categoria/carreira` -> Carreira Técnica, Habilitações e Regulamentação RBAC
+- `/sobre` -> Perfil profissional e trajetória de Alexandre Andrade
+- `/contato` -> Canal oficial para contato técnico e propostas institucionais
+- `/privacidade` -> Política de Privacidade em conformidade com a LGPD
+- `/termos` -> Termos de Uso do portal

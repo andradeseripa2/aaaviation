@@ -1,0 +1,15 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /api/
+
+User-agent: Mediapartners-Google
+Allow: /
+
+User-agent: Google-Publisher-Bot
+Allow: /
+
+User-agent: Googlebot
+Allow: /
+
+Sitemap: https://aaaviation.com.br/sitemap.xml

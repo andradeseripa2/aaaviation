@@ -1,0 +1,6 @@
+{
+  "name": "Alexandre Andrade Aviation",
+  "description": "Blog e portal especializado em manutenção aeronáutica, segurança de voo (SIPAER/CENIPA), carreira técnica e curiosidades da aviação por Alexandre Andrade.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

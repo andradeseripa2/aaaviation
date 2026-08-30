@@ -1,0 +1,11 @@
+{
+  "delayMinutes": 2,
+  "enabled": true,
+  "autoReplyMode": "auto_delay_2min",
+  "notifyAdminOnGeneration": true,
+  "smartRoutingEnabled": true,
+  "updatedAt": "2026-08-24T20:25:25.557Z",
+  "defaultAgentId": "inspetor-brandao",
+  "dailyReplyLimit": 30,
+  "antiSpamEnabled": true
+}

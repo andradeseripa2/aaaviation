@@ -1,0 +1,140 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with roles and credentials",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "email": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "reader", "editor"] },
+        "avatar": { "type": "string" },
+        "title": { "type": "string" },
+        "bio": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "email", "name", "role"]
+    },
+    "Post": {
+      "title": "Post",
+      "description": "Aviation blog technical article",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "slug": { "type": "string" },
+        "title": { "type": "string" },
+        "subtitle": { "type": "string" },
+        "excerpt": { "type": "string" },
+        "content": { "type": "string" },
+        "category": { "type": "string" },
+        "author": { "type": "object" },
+        "date": { "type": "string" },
+        "readTimeMinutes": { "type": "number" },
+        "viewsCount": { "type": "number" },
+        "likesCount": { "type": "number" },
+        "published": { "type": "boolean" },
+        "featured": { "type": "boolean" },
+        "isSafetyPost": { "type": "boolean" },
+        "technicalBadge": { "type": "string" },
+        "coverImage": { "type": "string" },
+        "coverImageCaption": { "type": "string" },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "diagramData": { "type": "object" },
+        "regulatoryComparison": { "type": "object" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "slug", "title", "content", "category", "published"]
+    },
+    "Comment": {
+      "title": "Comment",
+      "description": "Technical comment on a post with replies",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "postId": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "userAvatar": { "type": "string" },
+        "userTitle": { "type": "string" },
+        "content": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "status": { "type": "string", "enum": ["approved", "pending", "rejected"] },
+        "likes": { "type": "number" },
+        "replies": { "type": "array" }
+      },
+      "required": ["id", "postId", "userId", "userName", "content", "createdAt", "status"]
+    },
+    "PostRating": {
+      "title": "PostRating",
+      "description": "Aggregated or user ratings for articles",
+      "type": "object",
+      "properties": {
+        "postId": { "type": "string" },
+        "ratings": { "type": "object" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["postId"]
+    },
+    "Newsletter": {
+      "title": "Newsletter",
+      "description": "Newsletter subscriber email",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "email": { "type": "string" },
+        "categoryInterest": { "type": "string" },
+        "subscribedAt": { "type": "string" }
+      },
+      "required": ["id", "email"]
+    },
+    "ContactMessage": {
+      "title": "ContactMessage",
+      "description": "Message from technical contact form",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "subject": { "type": "string" },
+        "message": { "type": "string" },
+        "isRead": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "name", "email", "message"]
+    },
+    "AppSetting": {
+      "title": "AppSetting",
+      "description": "Global application configuration such as Ads and Categories",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "data": { "type": "object" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id"]
+    },
+    "BriefingCampaign": {
+      "title": "BriefingCampaign",
+      "description": "Weekly aviation newsletter briefing campaigns and sent history",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "subject": { "type": "string" },
+        "preheader": { "type": "string" },
+        "editorGreeting": { "type": "string" },
+        "customMessage": { "type": "string" },
+        "featuredPostIds": { "type": "array", "items": { "type": "string" } },
+        "status": { "type": "string", "enum": ["draft", "sending", "sent", "failed"] },
+        "sentAt": { "type": "string" },
+        "recipientCount": { "type": "number" },
+        "successCount": { "type": "number" },
+        "createdAt": { "type": "string" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["id", "subject", "status", "createdAt"]
+    }
+  }
+}

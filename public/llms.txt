@@ -1,0 +1,24 @@
+# Alexandre Andrade Aviation
+> Portal técnico especializado em Manutenção Aeronáutica, Segurança Operacional (SIPAER/CENIPA), Doutrina Operacional e Regulamentação RBAC/ANAC, fundado e mantido por Alexandre Andrade.
+
+## Visão Geral
+O portal Alexandre Andrade Aviation (https://aaaviation.com.br) é uma plataforma editorial e técnica dedicada à disseminação de conhecimento avançado sobre engenharia de manutenção de aeronaves, fatores humanos na linha de voo, investigação preventiva de acidentes e incidentes aeronáuticos e evolução dos sistemas de propulsão a reação (motores turbofan e turboélice).
+
+## Autor e Especialista Principal
+- **Nome**: Alexandre Andrade
+- **Qualificação**: Especialista em Manutenção Aeronáutica & Investigador de Acidentes Aeronáuticos (SIPAER / CENIPA)
+- **Trajetória**: Vasta experiência na Força Aérea Brasileira (FAB) e na aviação civil, atuando na manutenção estrutural, inspeção boroscópica, confiabilidade de frotas e cultura de segurança operacional (SGSO).
+- **Página do Autor**: https://aaaviation.com.br/sobre
+
+## Principais Áreas de Estudo & Categorias Técnicas
+- **Manutenção Aeronáutica**: Práticas de hangar, inspeções programadas, AMM/CMM, controle de F.O.D. e manutenção preventiva de células e aviônicos.
+- **Segurança de Voo & SIPAER**: Filosofia SIPAER, investigação preventiva CENIPA, Modelo SHELL, Fatores Humanos e implantação de SGSO/SMS.
+- **Motores & Turbofans**: Princípios termodinâmicos, seção quente e fria, boroscopia em motores CFM56, LEAP e Pratt & Whitney, degradação de palhetas e controle de vibrações.
+- **Carreira & Doutrina**: Formação técnica de Mecânicos de Manutenção de Aeronaves (MMA), certificações ANAC/FAA e liderança técnica em oficinas homologadas RBAC 145.
+
+## Recursos e Acesso para Agentes de IA
+- **Website Principal**: https://aaaviation.com.br/
+- **Sitemap XML**: https://aaaviation.com.br/sitemap.xml
+- **Robots TXT**: https://aaaviation.com.br/robots.txt
+- **Arquivo Completo LLMs**: https://aaaviation.com.br/llms-full.txt
+- **Contato Técnico**: https://aaaviation.com.br/contato
