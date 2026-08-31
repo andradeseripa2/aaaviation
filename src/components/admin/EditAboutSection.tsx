@@ -780,10 +780,10 @@ export const EditAboutSection: React.FC = () => {
             </div>
             <div>
               <h3 className="text-lg font-bold text-[#0A192F] dark:text-white font-['Outfit']">
-                6. Bloco de Chamada para Ação (CTA de Contato & Consultoria)
+                6. Bloco de Chamada para Ação (CTA de Contato & Dúvidas)
               </h3>
               <p className="text-xs text-[#64748B] dark:text-slate-400">
-                Banner exibido na parte inferior da página convidando para contato técnico ou consultorias.
+                Banner exibido na parte inferior da página convidando para contato técnico e dúvidas.
               </p>
             </div>
           </div>

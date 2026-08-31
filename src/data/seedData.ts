@@ -128,9 +128,9 @@ export const INITIAL_ABOUT_PAGE_DATA: AboutPageData = {
     'Conhecimento aprofundado dos RBACs da ANAC, manuais AMM, CMM, SRM e filosofia MSG-3'
   ],
 
-  ctaTitle: 'Quer conversar sobre consultoria ou segurança de voo?',
+  ctaTitle: 'Quer conversar sobre aviação ou segurança de voo?',
   ctaSubtitle:
-    'Entre em contato para palestras, consultorias técnicas e análises especializadas.',
+    'Envie sua mensagem com dúvidas técnicas, sugestões de artigos ou para debater sobre segurança de voo.',
   ctaButtonText: 'Fale Conosco'
 };
 

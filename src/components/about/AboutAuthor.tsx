@@ -17,7 +17,18 @@ import {
 export const AboutAuthor: React.FC = () => {
   const { navigate, aboutData } = useBlog();
 
-  const data = aboutData || INITIAL_ABOUT_PAGE_DATA;
+  const rawData = aboutData || INITIAL_ABOUT_PAGE_DATA;
+  const data = {
+    ...rawData,
+    ctaTitle:
+      !rawData.ctaTitle || /consultoria|palestra|treinamento/i.test(rawData.ctaTitle)
+        ? 'Quer conversar sobre aviação ou segurança de voo?'
+        : rawData.ctaTitle,
+    ctaSubtitle:
+      !rawData.ctaSubtitle || /consultoria|palestra|treinamento/i.test(rawData.ctaSubtitle)
+        ? 'Envie sua mensagem com dúvidas técnicas, sugestões de artigos ou para debater sobre segurança de voo.'
+        : rawData.ctaSubtitle
+  };
   const fallbackAuthorPhoto = '/author.webp';
   const rawAuthorPhoto = data.photoUrl || fallbackAuthorPhoto;
   const authorPhoto = useResolvedImageUrl(rawAuthorPhoto, fallbackAuthorPhoto);
@@ -202,10 +213,10 @@ export const AboutAuthor: React.FC = () => {
       <div className="p-8 bg-gradient-to-r from-[#0A192F] to-[#0E2954] text-white rounded-2xl border border-slate-800 shadow-md flex flex-col sm:flex-row items-center justify-between gap-6 mb-8">
         <div>
           <h4 className="text-xl font-bold font-['Outfit']">
-            {data.ctaTitle || 'Quer conversar sobre consultoria ou segurança de voo?'}
+            {data.ctaTitle || 'Quer conversar sobre aviação ou segurança de voo?'}
           </h4>
           <p className="text-sm text-slate-300 mt-1">
-            {data.ctaSubtitle || 'Entre em contato para palestras, consultorias técnicas e análises especializadas.'}
+            {data.ctaSubtitle || 'Envie sua mensagem com dúvidas técnicas, sugestões de artigos ou para debater sobre segurança de voo.'}
           </p>
         </div>
         <button

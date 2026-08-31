@@ -584,7 +584,18 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
 
   const [aboutData, setAboutData] = useState<AboutPageData>(() => {
-    return safeGetJSON<AboutPageData>(STORAGE_KEY_ABOUT, INITIAL_ABOUT_PAGE_DATA);
+    const raw = safeGetJSON<AboutPageData>(STORAGE_KEY_ABOUT, INITIAL_ABOUT_PAGE_DATA);
+    return {
+      ...raw,
+      ctaTitle:
+        !raw.ctaTitle || /consultoria|palestra|treinamento/i.test(raw.ctaTitle)
+          ? 'Quer conversar sobre aviação ou segurança de voo?'
+          : raw.ctaTitle,
+      ctaSubtitle:
+        !raw.ctaSubtitle || /consultoria|palestra|treinamento/i.test(raw.ctaSubtitle)
+          ? 'Envie sua mensagem com dúvidas técnicas, sugestões de artigos ou para debater sobre segurança de voo.'
+          : raw.ctaSubtitle
+    };
   });
 
   const [contactInfo, setContactInfo] = useState<ContactInfoData>(() => {
@@ -1093,8 +1104,27 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (docSnap.exists()) {
             const data = docSnap.data() as AboutPageData;
             if (data && data.authorName) {
-              setAboutData(data);
-              safeSetJSON(STORAGE_KEY_ABOUT, data);
+              const sanitized: AboutPageData = {
+                ...data,
+                ctaTitle:
+                  !data.ctaTitle || /consultoria|palestra|treinamento/i.test(data.ctaTitle)
+                    ? 'Quer conversar sobre aviação ou segurança de voo?'
+                    : data.ctaTitle,
+                ctaSubtitle:
+                  !data.ctaSubtitle || /consultoria|palestra|treinamento/i.test(data.ctaSubtitle)
+                    ? 'Envie sua mensagem com dúvidas técnicas, sugestões de artigos ou para debater sobre segurança de voo.'
+                    : data.ctaSubtitle
+              };
+              setAboutData(sanitized);
+              safeSetJSON(STORAGE_KEY_ABOUT, sanitized);
+
+              // Auto-heal Firestore document if it contained deprecated words
+              if (
+                data.ctaTitle !== sanitized.ctaTitle ||
+                data.ctaSubtitle !== sanitized.ctaSubtitle
+              ) {
+                setDoc(doc(db, 'settings', 'about_page'), sanitized, { merge: true }).catch(() => {});
+              }
             }
           } else {
             // Seed initial about page data if missing

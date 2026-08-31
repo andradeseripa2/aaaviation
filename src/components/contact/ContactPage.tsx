@@ -25,7 +25,7 @@ export const ContactPage: React.FC = () => {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
-    subject: 'Consultoria Técnica / MRO',
+    subject: 'Dúvida Técnica sobre Artigo',
     message: ''
   });
   const [status, setStatus] = useState<{ success: boolean; message: string } | null>(null);
@@ -46,7 +46,7 @@ export const ContactPage: React.FC = () => {
   const cleanPhone = formatWhatsAppNumber(rawPhone);
 
   const directWhatsAppUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(
-    'Olá Alexandre! Gostaria de conversar sobre consultoria e segurança de voo.'
+    'Olá Alexandre! Acompanho seu blog sobre aviação e gostaria de enviar uma mensagem.'
   )}`;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -70,7 +70,7 @@ export const ContactPage: React.FC = () => {
       setFormData({
         name: '',
         email: '',
-        subject: 'Consultoria Técnica / MRO',
+        subject: 'Dúvida Técnica sobre Artigo',
         message: ''
       });
     } else {
@@ -88,27 +88,27 @@ export const ContactPage: React.FC = () => {
       <div className="text-center max-w-2xl mx-auto mb-12">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#EFF6FF] dark:bg-blue-950/60 text-[#1D4ED8] dark:text-blue-400 text-xs font-bold font-['Outfit'] uppercase tracking-wider mb-3">
           <MessageSquare className="w-3.5 h-3.5" />
-          Consultoria, Treinamentos & Contato
+          Contato & Sugestões Técnicas
         </div>
         <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black text-[#0A192F] dark:text-white font-['Outfit'] tracking-tight">
-          Consultoria Técnica & Palestras
+          Fale com o Autor
         </h1>
         <p className="text-sm sm:text-base text-[#64748B] dark:text-slate-400 mt-3 leading-relaxed">
-          Atendimento especializado para operadores executivos, companhias aéreas, oficinas homologadas RBAC 145 e instituições de ensino aeronáutico em todo o Brasil.
+          Canal direto para envio de dúvidas técnicas, sugestões de novos artigos, troca de ideias sobre segurança de voo, manutenção aeronáutica e fotografia spotter.
         </p>
       </div>
 
-      {/* Services Grid Showcase */}
+      {/* Topics Grid Showcase */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-12">
         <div className="p-5 rounded-2xl bg-white dark:bg-[#070F1E] border border-slate-200 dark:border-slate-800 shadow-xs space-y-2">
           <div className="w-9 h-9 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-[#1D4ED8] dark:text-blue-400 flex items-center justify-center">
             <ShieldCheck className="w-5 h-5" />
           </div>
           <h4 className="font-bold text-sm text-[#0A192F] dark:text-white font-['Outfit']">
-            Auditorias SGSO & RBAC
+            Doutrina de Segurança
           </h4>
           <p className="text-xs text-[#64748B] dark:text-slate-400 leading-relaxed">
-            Diagnóstico de conformidade, matriz de risco operacional e preparação para inspeções da ANAC.
+            Discussões conceituais sobre segurança de voo, fatores humanos e prevenção de incidentes.
           </p>
         </div>
 
@@ -117,10 +117,10 @@ export const ContactPage: React.FC = () => {
             <MessageCircle className="w-5 h-5" />
           </div>
           <h4 className="font-bold text-sm text-[#0A192F] dark:text-white font-['Outfit']">
-            Palestras CRM & MRM
+            Cultura de Manutenção
           </h4>
           <p className="text-xs text-[#64748B] dark:text-slate-400 leading-relaxed">
-            Treinamentos em Fatores Humanos, comunicação em cabine e manutenção, gestão de fadiga e Cultura Justa.
+            Troca de experiências sobre práticas de oficina, rotinas de inspeção e sistemas de aeronaves.
           </p>
         </div>
 
@@ -129,10 +129,10 @@ export const ContactPage: React.FC = () => {
             <Clock className="w-5 h-5" />
           </div>
           <h4 className="font-bold text-sm text-[#0A192F] dark:text-white font-['Outfit']">
-            Consultoria em MRO
+            Fotografia & Spotter
           </h4>
           <p className="text-xs text-[#64748B] dark:text-slate-400 leading-relaxed">
-            Otimização de processos de manutenção, confiabilidade, rotinas de boroscopia e controle técnico.
+            Intercâmbio sobre registros fotográficos, técnicas de captura e aviação militar e civil.
           </p>
         </div>
 
@@ -141,10 +141,10 @@ export const ContactPage: React.FC = () => {
             <Inbox className="w-5 h-5" />
           </div>
           <h4 className="font-bold text-sm text-[#0A192F] dark:text-white font-['Outfit']">
-            Apoio Técnico & Pareceres
+            Sugestões de Pauta
           </h4>
           <p className="text-xs text-[#64748B] dark:text-slate-400 leading-relaxed">
-            Pareceres técnicos em aeronavegabilidade continuada e doutrina de prevenção SIPAER.
+            Envie temas, aeronaves históricas ou sistemas que você gostaria de ver analisados no blog.
           </p>
         </div>
       </div>
@@ -341,11 +341,11 @@ export const ContactPage: React.FC = () => {
                   onChange={e => setFormData({ ...formData, subject: e.target.value })}
                   className="w-full px-4 py-3 text-sm bg-[#F8FAFC] dark:bg-slate-900 border border-[#CBD5E1] dark:border-slate-700 text-slate-900 dark:text-white rounded-xl focus:outline-hidden focus:ring-2 focus:ring-[#0E2954]"
                 >
-                  <option value="Consultoria Técnica / MRO">Consultoria Técnica / MRO</option>
-                  <option value="Palestras & Treinamentos SIPAER">Palestras & Treinamentos SIPAER</option>
                   <option value="Dúvida Técnica sobre Artigo">Dúvida Técnica sobre Artigo</option>
                   <option value="Sugestão de Pauta / Conteúdo">Sugestão de Pauta / Conteúdo</option>
-                  <option value="Imprensa / Outros">Imprensa / Outros</option>
+                  <option value="Segurança de Voo & Fatores Humanos">Segurança de Voo & Fatores Humanos</option>
+                  <option value="Fotografia Spotter & Aviação">Fotografia Spotter & Aviação</option>
+                  <option value="Outro Assunto">Outro Assunto</option>
                 </select>
               </div>
 
@@ -358,7 +358,7 @@ export const ContactPage: React.FC = () => {
                   rows={5}
                   value={formData.message}
                   onChange={e => setFormData({ ...formData, message: e.target.value })}
-                  placeholder="Descreva o contexto, objetivos da consultoria ou sua pergunta..."
+                  placeholder="Escreva sua dúvida técnica, comentário sobre um artigo ou sugestão..."
                   className="w-full p-4 text-sm bg-[#F8FAFC] dark:bg-slate-900 border border-[#CBD5E1] dark:border-slate-700 text-slate-900 dark:text-white rounded-xl focus:outline-hidden focus:ring-2 focus:ring-[#0E2954] resize-none"
                 />
               </div>

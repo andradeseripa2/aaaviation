@@ -33,10 +33,10 @@ const STATIC_ROUTES = [
   },
   {
     path: '/contato',
-    title: 'Consultoria Técnica & Palestras em Segurança de Voo | Contato',
-    description: 'Solicite consultoria técnica em MRO, auditorias SGSO (RBAC 145/91/135) e palestras corporativas em CRM/MRM com Alexandre Andrade.',
-    h1: 'Consultoria Especializada, Treinamentos & Palestras',
-    bodyText: 'Atendimento especializado para operadores executivos, companhias aéreas, oficinas homologadas e centros de formação aeronáutica em todo o Brasil. Auditorias de SGSO, palestras em Fatores Humanos e pareceres em aeronavegabilidade.'
+    title: 'Contato & Dúvidas Técnicas | Alexandre Andrade',
+    description: 'Envie suas dúvidas técnicas, sugestões de novos artigos ou mensagens sobre segurança de voo e manutenção aeronáutica para Alexandre Andrade.',
+    h1: 'Fale com o Autor — Alexandre Andrade',
+    bodyText: 'Canal de contato para troca de experiências técnicas, dúvidas sobre artigos publicados, sugestões de pautas sobre aviação e cultura de segurança de voo.'
   },
   {
     path: '/blog',
@@ -238,7 +238,7 @@ function generateStaticHtml(templateHtml, meta) {
           <a href="/" class="hover:text-blue-300">Início</a>
           <a href="/blog" class="hover:text-blue-300">Artigos</a>
           <a href="/sobre" class="hover:text-blue-300">Sobre</a>
-          <a href="/contato" class="hover:text-blue-300">Consultoria & Contato</a>
+          <a href="/contato" class="hover:text-blue-300">Contato</a>
         </nav>
       </div>
     </header>
@@ -252,10 +252,10 @@ function generateStaticHtml(templateHtml, meta) {
       </article>
 
       <section class="mt-12 p-6 bg-slate-50 border border-slate-200 rounded-2xl">
-        <h3 class="text-base font-bold text-[#0A192F] mb-2">Alexandre Andrade — Consultoria em Manutenção Aeronáutica & SIPAER</h3>
-        <p class="text-xs text-slate-600 mb-4">Mais de uma década na Força Aérea Brasileira (FAB). Auditorias SGSO, fatores humanos (CRM/MRM) e pareceres técnicos.</p>
+        <h3 class="text-base font-bold text-[#0A192F] mb-2">Alexandre Andrade — Doutrina de Manutenção Aeronáutica & SIPAER</h3>
+        <p class="text-xs text-slate-600 mb-4">Mais de uma década na Força Aérea Brasileira (FAB). Compartilhando conhecimentos em segurança de voo, fatores humanos e boas práticas de manutenção.</p>
         <div class="flex gap-3">
-          <a href="/contato" class="px-4 py-2 bg-[#0A192F] text-white text-xs font-bold rounded-xl">Solicitar Consultoria</a>
+          <a href="/contato" class="px-4 py-2 bg-[#0A192F] text-white text-xs font-bold rounded-xl">Enviar Mensagem</a>
           <a href="/sobre" class="px-4 py-2 border border-slate-300 text-slate-700 text-xs font-semibold rounded-xl">Conhecer o Autor</a>
         </div>
       </section>
@@ -491,7 +491,7 @@ async function runSSG() {
             <a href="/" class="text-[#0E2954] hover:underline">Início</a>
             <a href="/sobre" class="text-[#0E2954] hover:underline">Sobre o Autor</a>
             <a href="/blog" class="text-[#0E2954] hover:underline">Artigos Técnicos</a>
-            <a href="/contato" class="text-[#0E2954] hover:underline">Consultoria &amp; Contato</a>
+            <a href="/contato" class="text-[#0E2954] hover:underline">Contato</a>
           </nav>
         </header>
 

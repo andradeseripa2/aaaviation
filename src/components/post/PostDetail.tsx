@@ -707,7 +707,7 @@ export const PostDetail: React.FC<PostDetailProps> = ({ post }) => {
           {/* 1) Post Rating System (Stars + Popup Login/Signup) */}
           <PostRating postId={post.id} />
 
-          {/* Lead Capture CTA Component: Checklist SGSO / Consultoria / Treinamento */}
+          {/* Lead Capture CTA Component: Checklist Técnico SGSO */}
           <LeadCaptureCTA postTitle={post.title} category={post.category} />
 
           {/* 2) Recommended Posts Section ("Você Também Pode Gostar de Ler") */}
@@ -774,7 +774,7 @@ export const PostDetail: React.FC<PostDetailProps> = ({ post }) => {
                 onClick={() => navigate('contact')}
                 className="min-h-[38px] px-3.5 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-bold font-['Outfit'] border border-slate-700 flex items-center justify-between transition-colors cursor-pointer"
               >
-                <span>Solicitar Consultoria</span>
+                <span>Enviar Mensagem</span>
                 <ChevronLeft className="w-4 h-4 rotate-180 text-blue-400" />
               </button>
 
