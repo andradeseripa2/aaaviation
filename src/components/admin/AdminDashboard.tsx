@@ -9,6 +9,7 @@ import { ArticlePreviewModal } from './ArticlePreviewModal';
 import { EditAboutSection } from './EditAboutSection';
 import { EditContactSection } from './EditContactSection';
 import { EditRadarSection } from './EditRadarSection';
+import { EditLeadMaterialSection } from './EditLeadMaterialSection';
 import { CategoryManager } from './CategoryManager';
 import { WeeklyBriefingManager } from './WeeklyBriefingManager';
 import { AIAgentsModerationManager } from './AIAgentsModerationManager';
@@ -53,7 +54,10 @@ import {
   FileEdit,
   RotateCcw,
   Check,
-  Loader2
+  Loader2,
+  Link as LinkIcon,
+  Copy,
+  FileCheck2
 } from 'lucide-react';
 import { draftService, PostDraft } from '../../services/draftService';
 
@@ -65,6 +69,7 @@ export const AdminDashboard: React.FC = () => {
     comments,
     newsletterSubscribers,
     contactMessages,
+    capturedLeads = [],
     adConfig,
     createPost,
     updatePost,
@@ -90,7 +95,7 @@ export const AdminDashboard: React.FC = () => {
     dismissSuggestedAIReply
   } = useBlog();
 
-  const [activeTab, setActiveTab] = useState<'posts' | 'new-post' | 'drafts' | 'ai-agents' | 'briefing' | 'radar' | 'about' | 'contact' | 'comments' | 'users' | 'categories' | 'ads' | 'messages'>('posts');
+  const [activeTab, setActiveTab] = useState<'posts' | 'new-post' | 'drafts' | 'lead-material' | 'ai-agents' | 'briefing' | 'radar' | 'about' | 'contact' | 'comments' | 'users' | 'categories' | 'ads' | 'messages'>('posts');
   const [editingPost, setEditingPost] = useState<Post | null>(null);
   const [postToDelete, setPostToDelete] = useState<Post | null>(null);
   const [isDeletingPost, setIsDeletingPost] = useState(false);
@@ -125,6 +130,26 @@ export const AdminDashboard: React.FC = () => {
   const [formMsg, setFormMsg] = useState<{ success: boolean; text: string } | null>(null);
   const [isSubmittingPost, setIsSubmittingPost] = useState(false);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [copiedPostId, setCopiedPostId] = useState<string | null>(null);
+
+  const handleCopyPostLink = async (p: Post) => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://aaaviation.com.br';
+    const postUrl = `${origin}/post/${p.slug}`;
+    try {
+      await navigator.clipboard.writeText(postUrl);
+      setCopiedPostId(p.id);
+      setTimeout(() => setCopiedPostId(null), 2500);
+    } catch {
+      const textarea = document.createElement('textarea');
+      textarea.value = postUrl;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+      setCopiedPostId(p.id);
+      setTimeout(() => setCopiedPostId(null), 2500);
+    }
+  };
 
   // Draft Management State
   const [draftSaveStatus, setDraftSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
@@ -637,6 +662,7 @@ export const AdminDashboard: React.FC = () => {
           { id: 'drafts', label: 'Rascunhos Salvos', icon: BookmarkCheck, count: savedDraftsList.length, highlightDraft: savedDraftsList.length > 0 },
           { id: 'ai-agents', label: 'Agentes de IA & Moderação', icon: Bot, count: aiAgents.filter(a => a.enabled).length, highlightAi: true },
           { id: 'radar', label: 'Radar (Avisos)', icon: Radio, highlight: true },
+          { id: 'lead-material', label: 'Checklist & Material SGSO', icon: FileCheck2, count: capturedLeads.length, highlightSgso: true },
           { id: 'briefing', label: 'Briefing Semanal', icon: Send, count: newsletterSubscribers.length, highlight: true },
           { id: 'about', label: 'Página "Sobre o Autor"', icon: UserCheck },
           { id: 'contact', label: 'Contato & Redes', icon: Phone },
@@ -655,6 +681,8 @@ export const AdminDashboard: React.FC = () => {
               className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all font-['Outfit'] cursor-pointer ${
                 isActive
                   ? 'bg-[#0A192F] text-white shadow-xs'
+                  : (tab as any).highlightSgso
+                  ? 'bg-blue-50 border border-blue-300 text-blue-900 hover:bg-blue-100'
                   : (tab as any).highlightDraft
                   ? 'bg-emerald-50 border border-emerald-300 text-emerald-900 hover:bg-emerald-100'
                   : (tab as any).highlightAi
@@ -665,12 +693,12 @@ export const AdminDashboard: React.FC = () => {
               }`}
             >
               <Icon className={`w-4 h-4 ${
-                (tab as any).highlightDraft && !isActive ? 'text-emerald-600' : (tab as any).highlightAi && !isActive ? 'text-blue-600' : (tab as any).highlight && !isActive ? 'text-amber-600' : ''
+                (tab as any).highlightSgso && !isActive ? 'text-blue-600' : (tab as any).highlightDraft && !isActive ? 'text-emerald-600' : (tab as any).highlightAi && !isActive ? 'text-blue-600' : (tab as any).highlight && !isActive ? 'text-amber-600' : ''
               }`} />
               <span>{tab.label}</span>
               {tab.count !== undefined && (
                 <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
-                  (tab as any).highlightDraft && !isActive ? 'bg-emerald-200 text-emerald-900 font-bold' : (tab as any).highlightAi && !isActive ? 'bg-blue-200 text-blue-900' : (tab as any).highlight && !isActive ? 'bg-amber-200 text-amber-900' : 'bg-slate-200 text-slate-800'
+                  (tab as any).highlightSgso && !isActive ? 'bg-blue-200 text-blue-900 font-bold' : (tab as any).highlightDraft && !isActive ? 'bg-emerald-200 text-emerald-900 font-bold' : (tab as any).highlightAi && !isActive ? 'bg-blue-200 text-blue-900' : (tab as any).highlight && !isActive ? 'bg-amber-200 text-amber-900' : 'bg-slate-200 text-slate-800'
                 }`}>
                   {tab.count}
                 </span>
@@ -683,9 +711,15 @@ export const AdminDashboard: React.FC = () => {
       {/* TAB 1: POSTS LIST */}
       {activeTab === 'posts' && (
         <div className="bg-white rounded-3xl border border-[#E2E8F0] shadow-xs overflow-hidden">
-          <div className="p-6 border-b border-[#F1F5F9] flex items-center justify-between">
-            <h2 className="text-lg font-bold text-[#0A192F] font-['Outfit']">Todos os Artigos do Blog</h2>
-            <span className="text-xs text-[#64748B]">Clique em editar para modificar ou alternar publicação</span>
+          <div className="p-6 border-b border-[#F1F5F9] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-bold text-[#0A192F] font-['Outfit']">Todos os Artigos do Blog</h2>
+              <span className="text-xs text-[#64748B]">Clique no ícone de link para copiar a URL direta de qualquer artigo para o LinkedIn</span>
+            </div>
+            <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50/80 border border-blue-200 rounded-xl text-[11px] text-blue-900 font-medium">
+              <LinkIcon className="w-3.5 h-3.5 text-blue-700 shrink-0" />
+              <span>Link padrão: <code className="font-mono text-blue-800">aaaviation.com.br/post/[slug]</code></span>
+            </div>
           </div>
 
           <div className="overflow-x-auto">
@@ -768,6 +802,18 @@ export const AdminDashboard: React.FC = () => {
                     <td className="px-4 py-4 font-mono">{p.viewsCount || 0} views</td>
                     <td className="px-6 py-4 text-right whitespace-nowrap">
                       <div className="flex items-center justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleCopyPostLink(p)}
+                          className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                            copiedPostId === p.id
+                              ? 'text-emerald-600 bg-emerald-50'
+                              : 'text-[#64748B] hover:text-[#1D4ED8] hover:bg-blue-50'
+                          }`}
+                          title={copiedPostId === p.id ? 'Link copiado para a área de transferência!' : 'Copiar link direto deste artigo'}
+                        >
+                          {copiedPostId === p.id ? <Check className="w-4 h-4 text-emerald-600" /> : <LinkIcon className="w-4 h-4" />}
+                        </button>
                         <button
                           onClick={() => navigate('post', { postSlug: p.slug })}
                           className="p-1.5 text-[#64748B] hover:text-[#1D4ED8] rounded-lg transition-colors"
@@ -2101,6 +2147,9 @@ export const AdminDashboard: React.FC = () => {
 
       {/* TAB 8.2: EDITAR RADAR TÉCNICO & TELEJORNAL */}
       {activeTab === 'radar' && <EditRadarSection />}
+
+      {/* TAB 8.3: GESTÃO DO CHECKLIST & MATERIAL SGSO */}
+      {activeTab === 'lead-material' && <EditLeadMaterialSection />}
 
       {/* TAB 8.5: EDITAR CONTATO E REDES SOCIAIS */}
       {activeTab === 'contact' && <EditContactSection />}

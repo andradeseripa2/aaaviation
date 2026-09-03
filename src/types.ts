@@ -297,3 +297,68 @@ export interface TechnicalRadarConfig {
   updatedAt?: string;
 }
 
+export interface LeadMaterialConfig {
+  status: 'draft' | 'published'; // 'draft' = em construção; 'published' = liberado
+  title: string;
+  subtitle: string;
+  badgeText: string;
+  bulletPoints: string[];
+  fileUrl?: string; // Link or base64 data url for download
+  fileName?: string; // e.g. "Checklist_Auditoria_SGSO_AlexandreAndrade.pdf"
+  fileSize?: string; // e.g. "1.8 MB PDF"
+  underConstructionMessage: string; // Message shown when status is 'draft'
+  publishedSuccessMessage: string; // Message shown when status is 'published'
+  emailSubject: string; // Subject for the delivery email
+  emailBodyMarkdown: string; // Delivery letter in markdown
+  updatedAt?: string;
+}
+
+export interface LeadCapture {
+  id: string;
+  name: string;
+  email: string;
+  source: string; // 'checklist_sgso'
+  postTitle?: string;
+  createdAt: string;
+  status: 'pending' | 'delivered';
+}
+
+export const INITIAL_LEAD_MATERIAL_CONFIG: LeadMaterialConfig = {
+  status: 'draft',
+  title: 'Checklist de Auditoria & Segurança SGSO',
+  subtitle: 'Planilha técnica educativa e guia de verificação rápida com os pilares recomendados da ANAC/OACI para estudos de conformidade, hangaragem e padronização.',
+  badgeText: 'Recurso Educacional Gratuito',
+  bulletPoints: [
+    'Itens críticos de pré-voo, hangaragem e rotinas técnicas',
+    'Matriz de Risco Operacional com base na doutrina SIPAER',
+    'Formato PDF e XLSX editável para fins educacionais'
+  ],
+  underConstructionMessage: 'Agradecemos seu interesse! O Checklist de Auditoria & Segurança SGSO está atualmente em fase final de elaboração e revisão técnica pelo especialista Alexandre Andrade. Seu e-mail foi cadastrado com prioridade na lista de espera. Assim que o material for homologado e liberado, você receberá a notificação com acesso imediato.',
+  publishedSuccessMessage: 'Material homologado e liberado com sucesso! Você já pode realizar o download imediato do checklist através do botão abaixo.',
+  emailSubject: 'Seu Checklist Técnico de Auditoria & Segurança SGSO - Alexandre Andrade Aviation',
+  emailBodyMarkdown: `Olá, **{{nome}}**!
+
+Obrigado pelo seu interesse em nossos materiais técnicos e na doutrina de **Segurança Operacional (SGSO / SIPAER)**.
+
+Conforme solicitado no portal **Alexandre Andrade Aviation**, disponibilizamos o seu acesso ao **Checklist Técnico de Auditoria & Segurança SGSO**, estruturado com base nas melhores práticas da OACI, manuais técnicos e regulamentos aplicáveis da ANAC (RBAC).
+
+---
+
+### 📋 O que você encontrará neste material:
+- **Rotinas Críticas de Hangar & Linha de Voo**: Verificação de sistemas mecânicos, aviônicos e integridade estrutural.
+- **Matriz de Identificação de Perigos & Risco**: Metodologia proativa para avaliação de severidade e probabilidade segundo a doutrina SIPAER.
+- **Fatores Humanos & Cultura Justa**: Critérios para prevenção de erros latentes e fortalecimento da comunicação na equipe de manutenção.
+
+---
+
+> ⚠️ **Aviso Doutrinário e Legal**: Este checklist e material técnico possuem finalidade estritamente educativa, conceitual e preventiva. Para qualquer intervenção de manutenção operacional em aeronaves reais, consulte sempre a documentação técnica vigente do fabricante (AMM/SRM/IPC) e as diretrizes regulatórias da autoridade de aviação civil (ANAC/FAA/EASA).
+
+Bons estudos e operações seguras!
+
+Atenciosamente,  
+**Alexandre Andrade**  
+*Especialista em Manutenção Aeronáutica & Investigador de Acidentes Aeronáuticos (SIPAER)*  
+🌐 [aaaviation.com.br](https://aaaviation.com.br) • ✉️ andradeseripa2@gmail.com
+`
+};
+

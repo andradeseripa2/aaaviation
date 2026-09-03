@@ -1,6 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { useBlog } from '../../context/BlogContext';
 import { Radio, Flame, AlertCircle, ExternalLink, ChevronLeft, ChevronRight } from 'lucide-react';
+import { isPostPublishedAndActive } from '../../lib/scheduleUtils';
 
 interface TickerItem {
   id: string;
@@ -35,7 +36,7 @@ export const BreakingNewsTicker: React.FC = () => {
 
   const isEnabled = radarConfig ? radarConfig.enabled !== false : true;
 
-  const publishedPosts = posts.filter(p => p.published);
+  const publishedPosts = posts.filter(isPostPublishedAndActive);
   const tickerItems: TickerItem[] = [];
 
   if (isEnabled) {

@@ -1,5 +1,5 @@
 import React, { useEffect, Suspense, lazy } from 'react';
-import { AuthProvider } from './context/AuthContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { BlogProvider, useBlog } from './context/BlogContext';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { Header } from './components/common/Header';
@@ -15,7 +15,8 @@ import { BreakingNewsTicker } from './components/home/BreakingNewsTicker';
 import { CommunityHangarCta } from './components/home/CommunityHangarCta';
 import { AuthorAuthorityCard } from './components/home/AuthorAuthorityCard';
 import { CookieConsentBanner } from './components/common/CookieConsentBanner';
-import { Plane, ArrowLeft, Loader2 } from 'lucide-react';
+import { Plane, ArrowLeft, Loader2, Clock } from 'lucide-react';
+import { isPostPublishedAndActive } from './lib/scheduleUtils';
 
 // Lazy-loaded routes for ultra-fast initial page load and minimum main-thread work
 const BlogIndex = lazy(() => import('./components/blog/BlogIndex').then(m => ({ default: m.BlogIndex })));
@@ -42,7 +43,8 @@ const ViewLoadingFallback: React.FC = () => (
 );
 
 const MainContent: React.FC = () => {
-  const { currentView, selectedPostSlug, selectedCategorySlug, posts, isLoadingPosts, navigate } = useBlog();
+  const { currentView, selectedPostSlug, selectedCategorySlug, posts, isLoadingPosts, isInitialRemoteSyncDone, navigate } = useBlog();
+  const { isAdmin } = useAuth();
 
   // Scroll to top on view changes
   useEffect(() => {
@@ -112,10 +114,15 @@ const MainContent: React.FC = () => {
         );
 
       case 'post': {
-        const post = posts.find(p => p.slug === selectedPostSlug) || posts.find(p => p.id === selectedPostSlug);
+        const targetSlug = selectedPostSlug ? decodeURIComponent(selectedPostSlug).trim().toLowerCase() : '';
+        const post =
+          posts.find(p => p.slug?.trim().toLowerCase() === targetSlug) ||
+          posts.find(p => p.id === selectedPostSlug) ||
+          posts.find(p => p.slug === selectedPostSlug);
         
         if (!post) {
-          if (isLoadingPosts) {
+          // If posts are still loading or initial remote sync from Firestore hasn't finished, show high-fidelity skeleton
+          if (isLoadingPosts || !isInitialRemoteSyncDone) {
             return (
               <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10 animate-pulse space-y-6">
                 <div className="flex items-center gap-3">
@@ -169,6 +176,39 @@ const MainContent: React.FC = () => {
           }
 
           return null;
+        }
+
+        // Check if post is scheduled for a future time and visitor is not admin
+        if (!isPostPublishedAndActive(post) && !isAdmin) {
+          const formattedSchedule = post.scheduledAt
+            ? new Date(post.scheduledAt).toLocaleString('pt-BR', { dateStyle: 'full', timeStyle: 'short' })
+            : 'em breve';
+          return (
+            <div className="max-w-xl mx-auto px-4 sm:px-6 py-24 text-center animate-in fade-in duration-300">
+              <div className="w-16 h-16 rounded-2xl bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 mx-auto flex items-center justify-center mb-5 shadow-inner">
+                <Clock className="w-8 h-8" />
+              </div>
+              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300 mb-3">
+                Lançamento Programado
+              </span>
+              <h2 className="text-2xl font-bold font-['Outfit'] text-slate-900 dark:text-white mb-2">
+                {post.title}
+              </h2>
+              <p className="text-sm text-slate-600 dark:text-slate-400 mb-6 leading-relaxed">
+                Este artigo técnico está agendado e será publicado oficialmente em <strong>{formattedSchedule}</strong>. Volte no horário para a leitura completa!
+              </p>
+              <div className="flex flex-wrap items-center justify-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => navigate('home')}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#0047AB] hover:bg-[#003B8E] text-white text-sm font-semibold shadow-md transition-all cursor-pointer font-['Outfit']"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  <span>Explorar Outros Artigos</span>
+                </button>
+              </div>
+            </div>
+          );
         }
 
         return (

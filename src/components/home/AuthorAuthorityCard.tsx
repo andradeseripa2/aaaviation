@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { Award, ArrowRight, ShieldCheck, Wrench, FileText, ChevronRight } from 'lucide-react';
 import { INITIAL_ABOUT_PAGE_DATA } from '../../data/seedData';
 import { resolveImageUrl, useResolvedImageUrl, getMediaDataUrl } from '../../services/mediaService';
+import { isPostPublishedAndActive } from '../../lib/scheduleUtils';
 
 export const AuthorAuthorityCard: React.FC = () => {
   const { navigate, aboutData, posts } = useBlog();
@@ -20,7 +21,7 @@ export const AuthorAuthorityCard: React.FC = () => {
   const rawAuthorPhotoUrl = data?.photoUrl || fallbackAuthorPhoto;
   const authorPhotoUrl = useResolvedImageUrl(rawAuthorPhotoUrl, fallbackAuthorPhoto);
 
-  const publishedCount = posts.filter(p => p.published).length;
+  const publishedCount = posts.filter(isPostPublishedAndActive).length;
 
   return (
     <section className="mb-16 bg-white dark:bg-[#0B1528] rounded-2xl md:rounded-3xl border border-[#E2E8F0] dark:border-slate-800 shadow-xs p-6 sm:p-8 transition-colors">

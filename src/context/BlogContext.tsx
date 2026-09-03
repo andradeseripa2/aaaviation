@@ -32,7 +32,9 @@ import {
   UserNotification,
   AIAgentPersona,
   AIModerationConfig,
-  SuggestedAIReply
+  SuggestedAIReply,
+  LeadMaterialConfig,
+  LeadCapture
 } from '../types';
 import {
   INITIAL_POSTS,
@@ -41,6 +43,8 @@ import {
   INITIAL_ABOUT_PAGE_DATA,
   INITIAL_CONTACT_INFO
 } from '../data/seedData';
+import { INITIAL_LEAD_MATERIAL_CONFIG } from '../types';
+import { isPostPublishedAndActive } from '../lib/scheduleUtils';
 import {
   DEFAULT_AI_AGENTS,
   INITIAL_AI_MODERATION_CONFIG
@@ -177,6 +181,14 @@ interface BlogContextType {
   resetToDefaults: () => Promise<void>;
   syncUserProfileToContent: (updatedUser: User) => Promise<void>;
 
+  // Lead Magnet / SGSO Material
+  leadMaterialConfig: LeadMaterialConfig;
+  capturedLeads: LeadCapture[];
+  isInitialRemoteSyncDone: boolean;
+  updateLeadMaterialConfig: (updates: Partial<LeadMaterialConfig>) => Promise<{ success: boolean; message: string }>;
+  captureLead: (name: string, email: string, postTitle?: string) => Promise<{ success: boolean; isDraft: boolean; message: string; config: LeadMaterialConfig }>;
+  deleteCapturedLead: (id: string) => Promise<void>;
+
   // Notifications
   notifications: UserNotification[];
   unreadNotificationsCount: number;
@@ -218,6 +230,8 @@ const STORAGE_KEY_COMMENT_LIKES = 'aaa_liked_comments_v2';
 const STORAGE_KEY_BOOKMARKS = 'aaa_bookmarks_v2';
 const STORAGE_KEY_THEME = 'aaa_theme_mode_v2';
 const STORAGE_KEY_FONT_SIZE = 'aaa_font_size_v2';
+const STORAGE_KEY_LEAD_MATERIAL = 'aaa_lead_material_v2';
+const STORAGE_KEY_CAPTURED_LEADS = 'aaa_captured_leads_v2';
 
 const INITIAL_RADAR_CONFIG: TechnicalRadarConfig = {
   enabled: true,
@@ -602,6 +616,14 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return safeGetJSON<ContactInfoData>(STORAGE_KEY_CONTACT_INFO, INITIAL_CONTACT_INFO);
   });
 
+  const [isInitialRemoteSyncDone, setIsInitialRemoteSyncDone] = useState<boolean>(false);
+  const [leadMaterialConfig, setLeadMaterialConfig] = useState<LeadMaterialConfig>(() => {
+    return safeGetJSON<LeadMaterialConfig>(STORAGE_KEY_LEAD_MATERIAL, INITIAL_LEAD_MATERIAL_CONFIG);
+  });
+  const [capturedLeads, setCapturedLeads] = useState<LeadCapture[]>(() => {
+    return safeGetJSON<LeadCapture[]>(STORAGE_KEY_CAPTURED_LEADS, []);
+  });
+
   const [aiAgents, setAiAgents] = useState<AIAgentPersona[]>(() => {
     return safeGetJSON<AIAgentPersona[]>(STORAGE_KEY_AI_AGENTS, DEFAULT_AI_AGENTS);
   });
@@ -686,21 +708,25 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setPosts(list);
             safeSetJSON(STORAGE_KEY_POSTS, list);
             setIsLoadingPosts(false);
+            setIsInitialRemoteSyncDone(true);
           } else {
             setPosts([]);
             safeSetJSON(STORAGE_KEY_POSTS, []);
             setIsLoadingPosts(false);
+            setIsInitialRemoteSyncDone(true);
           }
         },
         err => {
           console.warn('Firestore posts listener note:', err);
           setIsLoadingPosts(false);
+          setIsInitialRemoteSyncDone(true);
         }
       );
       return () => unsub();
     } catch (e) {
       console.warn('Posts listener error:', e);
       setIsLoadingPosts(false);
+      setIsInitialRemoteSyncDone(true);
     }
   }, []);
 
@@ -1255,6 +1281,62 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
+  // 7.7. Sync SGSO Lead Material Config from Firestore
+  useEffect(() => {
+    try {
+      const unsub = onSnapshot(
+        doc(db, 'settings', 'lead_material_sgso'),
+        docSnap => {
+          if (docSnap.exists()) {
+            const data = docSnap.data() as Partial<LeadMaterialConfig>;
+            if (data && data.title) {
+              setLeadMaterialConfig(prev => {
+                const merged = { ...prev, ...data };
+                safeSetJSON(STORAGE_KEY_LEAD_MATERIAL, merged);
+                return merged;
+              });
+            }
+          } else {
+            // Seed initial config if missing
+            const clean = sanitizeForFirestore(INITIAL_LEAD_MATERIAL_CONFIG);
+            setDoc(doc(db, 'settings', 'lead_material_sgso'), clean).catch(() => {});
+          }
+        },
+        err => console.warn('Lead material listener note:', err)
+      );
+      return () => unsub();
+    } catch (e) {
+      console.warn('Lead material listener error:', e);
+    }
+  }, []);
+
+  // 7.8. Sync Captured Leads from Firestore
+  useEffect(() => {
+    try {
+      const unsub = onSnapshot(
+        collection(db, 'leads'),
+        snapshot => {
+          const map = new Map<string, LeadCapture>();
+          snapshot.forEach(docSnap => {
+            const data = docSnap.data() as LeadCapture;
+            const leadId = data?.id || docSnap.id;
+            if (leadId && data?.email) {
+              map.set(leadId, { ...data, id: leadId });
+            }
+          });
+          const list = Array.from(map.values());
+          list.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+          setCapturedLeads(list);
+          safeSetJSON(STORAGE_KEY_CAPTURED_LEADS, list);
+        },
+        err => console.warn('Leads listener note:', err)
+      );
+      return () => unsub();
+    } catch (e) {
+      console.warn('Leads listener error:', e);
+    }
+  }, []);
+
   // 8. Sync Categories from Firestore
   useEffect(() => {
     try {
@@ -1332,7 +1414,7 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Derived category counts
   const categoriesWithCounts = categories.map(cat => {
-    const count = posts.filter(p => postMatchesCategory(p.category, cat.slug, categories) && p.published).length;
+    const count = posts.filter(p => postMatchesCategory(p.category, cat.slug, categories) && isPostPublishedAndActive(p)).length;
     return { ...cat, count };
   });
 
@@ -2716,6 +2798,87 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // SGSO Lead Material Management
+  const updateLeadMaterialConfig = async (updates: Partial<LeadMaterialConfig>): Promise<{ success: boolean; message: string }> => {
+    try {
+      const updated: LeadMaterialConfig = {
+        ...leadMaterialConfig,
+        ...updates,
+        updatedAt: new Date().toISOString()
+      };
+      setLeadMaterialConfig(updated);
+      safeSetJSON(STORAGE_KEY_LEAD_MATERIAL, updated);
+
+      const cleanDoc = sanitizeForFirestore(updated);
+      await setDoc(doc(db, 'settings', 'lead_material_sgso'), cleanDoc, { merge: true });
+      return { success: true, message: 'Configurações do Checklist SGSO salvas com sucesso!' };
+    } catch (err: any) {
+      console.error('Error updating lead material config:', err);
+      return { success: false, message: err?.message || 'Erro ao salvar material SGSO.' };
+    }
+  };
+
+  const captureLead = async (
+    name: string,
+    email: string,
+    postTitle?: string
+  ): Promise<{ success: boolean; isDraft: boolean; message: string; config: LeadMaterialConfig }> => {
+    const trimmedEmail = email.trim().toLowerCase();
+    const trimmedName = name.trim() || 'Leitor(a)';
+
+    if (!trimmedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      return {
+        success: false,
+        isDraft: leadMaterialConfig.status === 'draft',
+        message: 'Por favor, informe um endereço de e-mail válido.',
+        config: leadMaterialConfig
+      };
+    }
+
+    const leadId = `lead_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const isReady = leadMaterialConfig.status === 'published' && !!leadMaterialConfig.fileUrl;
+    const newLead: LeadCapture = {
+      id: leadId,
+      name: trimmedName,
+      email: trimmedEmail,
+      source: 'checklist_sgso',
+      postTitle: postTitle || 'Checklist SGSO',
+      createdAt: new Date().toISOString(),
+      status: isReady ? 'delivered' : 'pending'
+    };
+
+    // Update local state immediately
+    setCapturedLeads(prev => [newLead, ...prev.filter(l => l.email !== trimmedEmail)]);
+
+    // Save to Firestore
+    try {
+      await setDoc(doc(db, 'leads', leadId), sanitizeForFirestore(newLead));
+      // Register into newsletter subscriber list as well
+      await subscribeNewsletter(trimmedEmail, 'Segurança de Voo / SGSO');
+    } catch (err) {
+      console.warn('Lead capture firestore note:', err);
+    }
+
+    const isDraft = leadMaterialConfig.status === 'draft' || !leadMaterialConfig.fileUrl;
+    return {
+      success: true,
+      isDraft,
+      message: isDraft
+        ? leadMaterialConfig.underConstructionMessage
+        : leadMaterialConfig.publishedSuccessMessage,
+      config: leadMaterialConfig
+    };
+  };
+
+  const deleteCapturedLead = async (id: string): Promise<void> => {
+    setCapturedLeads(prev => prev.filter(l => l.id !== id));
+    try {
+      await deleteDoc(doc(db, 'leads', id));
+    } catch (err) {
+      console.warn('Delete lead error:', err);
+    }
+  };
+
   const resetToDefaults = async () => {
     setPosts([]);
     setCategories(INITIAL_CATEGORIES);
@@ -3039,6 +3202,12 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
         resetContactInfo,
         resetToDefaults,
         syncUserProfileToContent,
+        leadMaterialConfig,
+        capturedLeads,
+        isInitialRemoteSyncDone,
+        updateLeadMaterialConfig,
+        captureLead,
+        deleteCapturedLead,
         notifications,
         unreadNotificationsCount,
         markNotificationAsRead,

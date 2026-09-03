@@ -115,7 +115,7 @@ export const BlogIndex: React.FC = () => {
                 : 'bg-white dark:bg-[#0B1528] border border-[#CBD5E1] dark:border-slate-800 text-[#475569] dark:text-slate-300 hover:bg-[#F8FAFC] dark:hover:bg-slate-800'
             }`}
           >
-            Todos ({posts.filter(p => p.published).length})
+            Todos ({posts.filter(isPostPublishedAndActive).length})
           </button>
 
           {categories.map(cat => {

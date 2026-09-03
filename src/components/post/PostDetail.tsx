@@ -160,17 +160,35 @@ export const PostDetail: React.FC<PostDetailProps> = ({ post }) => {
       setMetaTag('property', 'og:title', post.title || 'Artigo Técnico');
       setMetaTag('property', 'og:description', post.excerpt || post.subtitle || 'Análise Técnica de Manutenção Aeronáutica por Alexandre Andrade');
       setMetaTag('property', 'og:type', 'article');
+      const origin = typeof window !== 'undefined' ? window.location.origin : 'https://aaaviation.com.br';
+      const postFullUrl = `${origin}/post/${post.slug}`;
+      setMetaTag('property', 'og:url', postFullUrl);
       setMetaTag('name', 'twitter:card', 'summary_large_image');
       setMetaTag('name', 'twitter:title', post.title || 'Artigo Técnico');
       setMetaTag('name', 'twitter:description', post.excerpt || post.subtitle || 'Análise Técnica de Aviação');
+
+      let canonicalLink = document.querySelector('link[rel="canonical"]') as HTMLLinkElement;
+      if (!canonicalLink) {
+        canonicalLink = document.createElement('link');
+        canonicalLink.setAttribute('rel', 'canonical');
+        document.head.appendChild(canonicalLink);
+      }
+      canonicalLink.href = postFullUrl;
     } catch (e) {
       console.warn('Meta tags injection note:', e);
     }
 
     return () => {
       document.title = prevTitle;
+      try {
+        const origin = typeof window !== 'undefined' ? window.location.origin : 'https://aaaviation.com.br';
+        const canonicalLink = document.querySelector('link[rel="canonical"]') as HTMLLinkElement;
+        if (canonicalLink) canonicalLink.href = `${origin}/`;
+        const ogUrl = document.querySelector('meta[property="og:url"]') as HTMLMetaElement;
+        if (ogUrl) ogUrl.content = `${origin}/`;
+      } catch {}
     };
-  }, [post?.id, post?.title, post?.coverImage, post?.excerpt, post?.subtitle]);
+  }, [post?.id, post?.title, post?.slug, post?.coverImage, post?.excerpt, post?.subtitle]);
 
   const getPostShareUrl = () => {
     try {
