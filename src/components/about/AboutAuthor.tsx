@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { DisclaimerBanner } from '../common/DisclaimerBanner';
 import { INITIAL_ABOUT_PAGE_DATA } from '../../data/seedData';
 import { resolveImageUrl, useResolvedImageUrl, getMediaDataUrl } from '../../services/mediaService';
+import { AircraftExperience } from '../../types';
 import {
   ShieldCheck,
   Search,
@@ -13,6 +14,47 @@ import {
   PlaneTakeoff,
   ArrowRight
 } from 'lucide-react';
+
+const AircraftCard: React.FC<{ ac: AircraftExperience }> = ({ ac }) => {
+  const fallbackUrl = 'https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?auto=format&fit=crop&w=800&q=80';
+  const resolvedUrl = useResolvedImageUrl(ac.imageUrl, fallbackUrl);
+
+  return (
+    <div className="p-5 rounded-xl bg-[#F8FAFC] dark:bg-slate-900/60 border border-[#E2E8F0] dark:border-slate-800 space-y-3 flex flex-col justify-between transition-all hover:border-slate-300 dark:hover:border-slate-700">
+      <div className="space-y-2">
+        {ac.imageUrl && (
+          <div className="h-36 w-full rounded-lg overflow-hidden mb-3 border border-slate-200 dark:border-slate-700 bg-slate-200 dark:bg-slate-800 relative group">
+            <img
+              src={resolvedUrl}
+              alt={ac.model}
+              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+              onError={async e => {
+                const target = e.target as HTMLImageElement;
+                if (ac.imageUrl && (ac.imageUrl.startsWith('/api/media/') || ac.imageUrl.startsWith('media:'))) {
+                  const fromFirestore = await getMediaDataUrl(ac.imageUrl);
+                  if (fromFirestore && fromFirestore !== target.src) {
+                    target.src = fromFirestore;
+                    return;
+                  }
+                }
+              }}
+              referrerPolicy="no-referrer"
+            />
+          </div>
+        )}
+        <span className="text-[11px] font-mono font-bold text-[#1D4ED8] dark:text-blue-400 uppercase tracking-wider block">
+          {ac.role}
+        </span>
+        <h4 className="text-base font-bold text-[#0A192F] dark:text-white font-['Outfit']">
+          {ac.model}
+        </h4>
+        <p className="text-xs text-[#475569] dark:text-slate-300 leading-relaxed">
+          {ac.details}
+        </p>
+      </div>
+    </div>
+  );
+};
 
 export const AboutAuthor: React.FC = () => {
   const { navigate, aboutData } = useBlog();
@@ -163,32 +205,7 @@ export const AboutAuthor: React.FC = () => {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {data.aircraftList && data.aircraftList.map((ac, idx) => (
-            <div
-              key={ac.id || idx}
-              className="p-5 rounded-xl bg-[#F8FAFC] dark:bg-slate-900/60 border border-[#E2E8F0] dark:border-slate-800 space-y-3 flex flex-col justify-between"
-            >
-              <div className="space-y-2">
-                {ac.imageUrl && (
-                  <div className="h-32 w-full rounded-lg overflow-hidden mb-3 border border-slate-200 dark:border-slate-700 bg-slate-200 dark:bg-slate-800">
-                    <img
-                      src={ac.imageUrl}
-                      alt={ac.model}
-                      className="w-full h-full object-cover"
-                      referrerPolicy="no-referrer"
-                    />
-                  </div>
-                )}
-                <span className="text-[11px] font-mono font-bold text-[#1D4ED8] dark:text-blue-400 uppercase">
-                  {ac.role}
-                </span>
-                <h4 className="text-base font-bold text-[#0A192F] dark:text-white font-['Outfit']">
-                  {ac.model}
-                </h4>
-                <p className="text-xs text-[#475569] dark:text-slate-300 leading-relaxed">
-                  {ac.details}
-                </p>
-              </div>
-            </div>
+            <AircraftCard key={ac.id || idx} ac={ac} />
           ))}
         </div>
       </div>

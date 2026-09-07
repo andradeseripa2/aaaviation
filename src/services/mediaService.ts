@@ -433,26 +433,9 @@ export async function uploadImageMedia(
   const mediaId = `img_${timestamp}_${randomSuffix}_${cleanName}.webp`;
   const cleanUrl = `/api/media/${mediaId}`;
 
-  // 1. Immediately store in local memory cache & IndexedDB
-  saveToLocalMediaCache(mediaId, dataUrl);
-  saveToLocalMediaCache(cleanUrl, dataUrl);
-
-  // 2. Also send to Express backend /api/media/upload for server-side disk caching
-  try {
-    fetch('/api/media/upload', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        imageBase64: dataUrl,
-        name: cleanName,
-        mimeType: 'image/webp'
-      })
-    }).catch(() => {});
-  } catch {
-    // silent
-  }
+  // 1. Immediately store in local memory cache & IndexedDB & Firestore & backend
+  await saveToLocalMediaCache(mediaId, dataUrl, cleanName);
+  saveToLocalMediaCache(cleanUrl, dataUrl, cleanName);
 
   // Return clean URL for concise markdown syntax and dataUrl for offline/direct usage
   return {

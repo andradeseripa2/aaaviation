@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useBlog } from '../../context/BlogContext';
 import { AboutPageData, AircraftExperience } from '../../types';
 import { ImageUploader } from './ImageUploader';
@@ -26,10 +26,11 @@ export const EditAboutSection: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [showResetModal, setShowResetModal] = useState(false);
+  const isDirtyRef = useRef(false);
 
-  // Sync state whenever aboutData changes from context/Firestore
+  // Sync state whenever aboutData changes from context/Firestore, but only if user hasn't made unsaved edits
   useEffect(() => {
-    if (aboutData) {
+    if (aboutData && !isDirtyRef.current) {
       setFormData(aboutData);
     }
   }, [aboutData]);
@@ -41,15 +42,17 @@ export const EditAboutSection: React.FC = () => {
 
     try {
       await updateAboutData(formData);
+      isDirtyRef.current = false;
       setFeedback({
         type: 'success',
         message: 'Página "Sobre o Autor" atualizada com sucesso no banco de dados!'
       });
       setTimeout(() => setFeedback(null), 5000);
-    } catch (err) {
+    } catch (err: any) {
+      console.error('Erro ao salvar página Sobre:', err);
       setFeedback({
         type: 'error',
-        message: 'Erro ao salvar alterações. Tente novamente.'
+        message: `Erro ao salvar alterações: ${err?.message || 'Tente novamente.'}`
       });
     } finally {
       setIsSaving(false);
@@ -59,6 +62,7 @@ export const EditAboutSection: React.FC = () => {
   const handleConfirmReset = async () => {
     setIsSaving(true);
     setShowResetModal(false);
+    isDirtyRef.current = false;
     await resetAboutData();
     setIsSaving(false);
     setFeedback({
@@ -68,33 +72,53 @@ export const EditAboutSection: React.FC = () => {
     setTimeout(() => setFeedback(null), 4000);
   };
 
-  // Bio paragraphs helpers
-  const handleBioParagraphChange = (index: number, value: string) => {
-    const updated = [...formData.bioParagraphs];
-    updated[index] = value;
-    setFormData({ ...formData, bioParagraphs: updated });
+  const handleChange = (field: keyof AboutPageData, value: any) => {
+    isDirtyRef.current = true;
+    setFormData(prev => ({
+      ...prev,
+      [field]: value
+    }));
   };
 
-  const addBioParagraph = () => {
-    setFormData({
-      ...formData,
-      bioParagraphs: [...formData.bioParagraphs, '']
+  // Bio paragraphs helpers
+  const handleBioParagraphChange = (index: number, value: string) => {
+    isDirtyRef.current = true;
+    setFormData(prev => {
+      const updated = [...prev.bioParagraphs];
+      updated[index] = value;
+      return { ...prev, bioParagraphs: updated };
     });
   };
 
+  const addBioParagraph = () => {
+    isDirtyRef.current = true;
+    setFormData(prev => ({
+      ...prev,
+      bioParagraphs: [...prev.bioParagraphs, '']
+    }));
+  };
+
   const removeBioParagraph = (index: number) => {
-    const updated = formData.bioParagraphs.filter((_, i) => i !== index);
-    setFormData({ ...formData, bioParagraphs: updated });
+    isDirtyRef.current = true;
+    setFormData(prev => ({
+      ...prev,
+      bioParagraphs: prev.bioParagraphs.filter((_, i) => i !== index)
+    }));
   };
 
   // Aircraft list helpers
   const handleAircraftChange = (index: number, field: keyof AircraftExperience, value: string) => {
-    const updated = [...formData.aircraftList];
-    updated[index] = { ...updated[index], [field]: value };
-    setFormData({ ...formData, aircraftList: updated });
+    isDirtyRef.current = true;
+    setFormData(prev => {
+      const currentList = prev.aircraftList ? [...prev.aircraftList] : [];
+      if (!currentList[index]) return prev;
+      currentList[index] = { ...currentList[index], [field]: value };
+      return { ...prev, aircraftList: currentList };
+    });
   };
 
   const addAircraft = () => {
+    isDirtyRef.current = true;
     const newAircraft: AircraftExperience = {
       id: `ac-${Date.now()}`,
       model: 'Novo Modelo de Aeronave',
@@ -102,34 +126,44 @@ export const EditAboutSection: React.FC = () => {
       details: 'Descreva a vivência prática, sistemas mecânicos ou tipo de manutenção realizada nesta aeronave.',
       imageUrl: 'https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?auto=format&fit=crop&w=800&q=80'
     };
-    setFormData({
-      ...formData,
-      aircraftList: [...formData.aircraftList, newAircraft]
-    });
+    setFormData(prev => ({
+      ...prev,
+      aircraftList: [...(prev.aircraftList || []), newAircraft]
+    }));
   };
 
   const removeAircraft = (index: number) => {
-    const updated = formData.aircraftList.filter((_, i) => i !== index);
-    setFormData({ ...formData, aircraftList: updated });
+    isDirtyRef.current = true;
+    setFormData(prev => ({
+      ...prev,
+      aircraftList: (prev.aircraftList || []).filter((_, i) => i !== index)
+    }));
   };
 
   // Credentials list helpers
   const handleCredentialChange = (index: number, value: string) => {
-    const updated = [...formData.credentialsList];
-    updated[index] = value;
-    setFormData({ ...formData, credentialsList: updated });
-  };
-
-  const addCredential = () => {
-    setFormData({
-      ...formData,
-      credentialsList: [...formData.credentialsList, '']
+    isDirtyRef.current = true;
+    setFormData(prev => {
+      const updated = [...prev.credentialsList];
+      updated[index] = value;
+      return { ...prev, credentialsList: updated };
     });
   };
 
+  const addCredential = () => {
+    isDirtyRef.current = true;
+    setFormData(prev => ({
+      ...prev,
+      credentialsList: [...prev.credentialsList, '']
+    }));
+  };
+
   const removeCredential = (index: number) => {
-    const updated = formData.credentialsList.filter((_, i) => i !== index);
-    setFormData({ ...formData, credentialsList: updated });
+    isDirtyRef.current = true;
+    setFormData(prev => ({
+      ...prev,
+      credentialsList: prev.credentialsList.filter((_, i) => i !== index)
+    }));
   };
 
   return (
@@ -220,7 +254,7 @@ export const EditAboutSection: React.FC = () => {
               <input
                 type="text"
                 value={formData.homeAuthorityTag || ''}
-                onChange={e => setFormData({ ...formData, homeAuthorityTag: e.target.value })}
+                onChange={e => handleChange('homeAuthorityTag', e.target.value)}
                 className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm focus:outline-hidden focus:ring-2 focus:ring-amber-500"
                 placeholder="Ex: Autor & Editor"
               />
@@ -233,7 +267,7 @@ export const EditAboutSection: React.FC = () => {
               <input
                 type="text"
                 value={formData.homeAuthorityTitle || ''}
-                onChange={e => setFormData({ ...formData, homeAuthorityTitle: e.target.value })}
+                onChange={e => handleChange('homeAuthorityTitle', e.target.value)}
                 className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm focus:outline-hidden focus:ring-2 focus:ring-amber-500"
                 placeholder="Ex: Alexandre Andrade"
               />
@@ -246,7 +280,7 @@ export const EditAboutSection: React.FC = () => {
               <input
                 type="text"
                 value={formData.homeAuthorityRole || ''}
-                onChange={e => setFormData({ ...formData, homeAuthorityRole: e.target.value })}
+                onChange={e => handleChange('homeAuthorityRole', e.target.value)}
                 className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm focus:outline-hidden focus:ring-2 focus:ring-amber-500"
                 placeholder="Ex: Especialista em Manutenção Aeronáutica & Investigação SIPAER"
               />
@@ -260,7 +294,7 @@ export const EditAboutSection: React.FC = () => {
             <textarea
               rows={3}
               value={formData.homeAuthorityBio || ''}
-              onChange={e => setFormData({ ...formData, homeAuthorityBio: e.target.value })}
+              onChange={e => handleChange('homeAuthorityBio', e.target.value)}
               className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm leading-relaxed focus:outline-hidden focus:ring-2 focus:ring-amber-500"
               placeholder="Ex: Mais de 20 anos de vivência técnica na Força Aérea Brasileira e aviação civil, dedicados à manutenção estrutural, motores, fatores humanos e segurança de voo."
             />
@@ -274,7 +308,7 @@ export const EditAboutSection: React.FC = () => {
               <input
                 type="text"
                 value={formData.homeAuthorityBadgeText || ''}
-                onChange={e => setFormData({ ...formData, homeAuthorityBadgeText: e.target.value })}
+                onChange={e => handleChange('homeAuthorityBadgeText', e.target.value)}
                 className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm focus:outline-hidden focus:ring-2 focus:ring-amber-500"
                 placeholder="Ex: Doutrina Técnica & Hangar"
               />
@@ -287,7 +321,7 @@ export const EditAboutSection: React.FC = () => {
               <input
                 type="text"
                 value={formData.homeAuthorityButtonText || ''}
-                onChange={e => setFormData({ ...formData, homeAuthorityButtonText: e.target.value })}
+                onChange={e => handleChange('homeAuthorityButtonText', e.target.value)}
                 className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm focus:outline-hidden focus:ring-2 focus:ring-amber-500"
                 placeholder="Ex: Ver Trajetória Completa"
               />
@@ -319,7 +353,7 @@ export const EditAboutSection: React.FC = () => {
               <input
                 type="text"
                 value={formData.authorName}
-                onChange={e => setFormData({ ...formData, authorName: e.target.value })}
+                onChange={e => handleChange('authorName', e.target.value)}
                 className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                 placeholder="Ex: Alexandre Andrade"
                 required
@@ -333,7 +367,7 @@ export const EditAboutSection: React.FC = () => {
               <input
                 type="text"
                 value={formData.heroBadge}
-                onChange={e => setFormData({ ...formData, heroBadge: e.target.value })}
+                onChange={e => handleChange('heroBadge', e.target.value)}
                 className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                 placeholder="Ex: Perfil Técnico & Biografia"
               />
@@ -347,7 +381,7 @@ export const EditAboutSection: React.FC = () => {
             <textarea
               rows={3}
               value={formData.heroHighlight}
-              onChange={e => setFormData({ ...formData, heroHighlight: e.target.value })}
+              onChange={e => handleChange('heroHighlight', e.target.value)}
               className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm leading-relaxed focus:outline-hidden focus:ring-2 focus:ring-blue-500"
               placeholder="Resumo de alto impacto sobre sua atuação..."
             />
@@ -417,7 +451,7 @@ export const EditAboutSection: React.FC = () => {
               <ImageUploader
                 label="Foto de Perfil do Autor"
                 value={formData.photoUrl}
-                onChange={url => setFormData({ ...formData, photoUrl: url })}
+                onChange={url => handleChange('photoUrl', url)}
                 placeholder="Insira a URL ou faça upload da sua foto..."
                 helperText="Dica: fotos verticais ou em traje técnico/operacional têm excelente enquadramento."
               />
@@ -431,7 +465,7 @@ export const EditAboutSection: React.FC = () => {
                 <input
                   type="text"
                   value={formData.photoBadge}
-                  onChange={e => setFormData({ ...formData, photoBadge: e.target.value })}
+                  onChange={e => handleChange('photoBadge', e.target.value)}
                   className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                   placeholder="Ex: INSPETOR ILA • SIPAER"
                 />
@@ -444,7 +478,7 @@ export const EditAboutSection: React.FC = () => {
                 <input
                   type="text"
                   value={formData.photoSubtitle}
-                  onChange={e => setFormData({ ...formData, photoSubtitle: e.target.value })}
+                  onChange={e => handleChange('photoSubtitle', e.target.value)}
                   className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                   placeholder="Ex: Força Aérea Brasileira & Segurança de Voo"
                 />
@@ -483,7 +517,7 @@ export const EditAboutSection: React.FC = () => {
                 <input
                   type="text"
                   value={formData.pillar1Title}
-                  onChange={e => setFormData({ ...formData, pillar1Title: e.target.value })}
+                  onChange={e => handleChange('pillar1Title', e.target.value)}
                   className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-xs font-bold"
                   placeholder="Ex: Certificação SIPAER"
                 />
@@ -496,7 +530,7 @@ export const EditAboutSection: React.FC = () => {
                 <textarea
                   rows={4}
                   value={formData.pillar1Description}
-                  onChange={e => setFormData({ ...formData, pillar1Description: e.target.value })}
+                  onChange={e => handleChange('pillar1Description', e.target.value)}
                   className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-xs leading-relaxed"
                 />
               </div>
@@ -507,7 +541,7 @@ export const EditAboutSection: React.FC = () => {
                   <input
                     type="text"
                     value={formData.pillar1FooterLeft}
-                    onChange={e => setFormData({ ...formData, pillar1FooterLeft: e.target.value })}
+                    onChange={e => handleChange('pillar1FooterLeft', e.target.value)}
                     className="w-full px-2 py-1.5 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-mono"
                   />
                 </div>
@@ -516,7 +550,7 @@ export const EditAboutSection: React.FC = () => {
                   <input
                     type="text"
                     value={formData.pillar1FooterRight}
-                    onChange={e => setFormData({ ...formData, pillar1FooterRight: e.target.value })}
+                    onChange={e => handleChange('pillar1FooterRight', e.target.value)}
                     className="w-full px-2 py-1.5 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-bold text-blue-600 dark:text-blue-400"
                   />
                 </div>
@@ -536,7 +570,7 @@ export const EditAboutSection: React.FC = () => {
                 <input
                   type="text"
                   value={formData.pillar2Title}
-                  onChange={e => setFormData({ ...formData, pillar2Title: e.target.value })}
+                  onChange={e => handleChange('pillar2Title', e.target.value)}
                   className="w-full px-3 py-2 rounded-lg border border-slate-700 bg-slate-900 text-white text-xs font-bold"
                   placeholder="Ex: Investigação & Prevenção"
                 />
@@ -549,7 +583,7 @@ export const EditAboutSection: React.FC = () => {
                 <textarea
                   rows={4}
                   value={formData.pillar2Description}
-                  onChange={e => setFormData({ ...formData, pillar2Description: e.target.value })}
+                  onChange={e => handleChange('pillar2Description', e.target.value)}
                   className="w-full px-3 py-2 rounded-lg border border-slate-700 bg-slate-900 text-slate-200 text-xs leading-relaxed"
                 />
               </div>
@@ -560,7 +594,7 @@ export const EditAboutSection: React.FC = () => {
                   <input
                     type="text"
                     value={formData.pillar2FooterLeft}
-                    onChange={e => setFormData({ ...formData, pillar2FooterLeft: e.target.value })}
+                    onChange={e => handleChange('pillar2FooterLeft', e.target.value)}
                     className="w-full px-2 py-1.5 rounded border border-slate-700 bg-slate-900 text-xs font-mono text-slate-300"
                   />
                 </div>
@@ -569,7 +603,7 @@ export const EditAboutSection: React.FC = () => {
                   <input
                     type="text"
                     value={formData.pillar2FooterRight}
-                    onChange={e => setFormData({ ...formData, pillar2FooterRight: e.target.value })}
+                    onChange={e => handleChange('pillar2FooterRight', e.target.value)}
                     className="w-full px-2 py-1.5 rounded border border-slate-700 bg-slate-900 text-xs font-bold text-sky-400"
                   />
                 </div>
@@ -613,7 +647,7 @@ export const EditAboutSection: React.FC = () => {
               <input
                 type="text"
                 value={formData.aircraftSectionTitle}
-                onChange={e => setFormData({ ...formData, aircraftSectionTitle: e.target.value })}
+                onChange={e => handleChange('aircraftSectionTitle', e.target.value)}
                 className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm"
               />
             </div>
@@ -624,7 +658,7 @@ export const EditAboutSection: React.FC = () => {
               <input
                 type="text"
                 value={formData.aircraftSectionSubtitle}
-                onChange={e => setFormData({ ...formData, aircraftSectionSubtitle: e.target.value })}
+                onChange={e => handleChange('aircraftSectionSubtitle', e.target.value)}
                 className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm"
               />
             </div>
@@ -741,7 +775,7 @@ export const EditAboutSection: React.FC = () => {
             <input
               type="text"
               value={formData.credentialsSectionTitle}
-              onChange={e => setFormData({ ...formData, credentialsSectionTitle: e.target.value })}
+              onChange={e => handleChange('credentialsSectionTitle', e.target.value)}
               className="w-full max-w-md px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-bold"
             />
           </div>
@@ -796,7 +830,7 @@ export const EditAboutSection: React.FC = () => {
               <input
                 type="text"
                 value={formData.ctaTitle}
-                onChange={e => setFormData({ ...formData, ctaTitle: e.target.value })}
+                onChange={e => handleChange('ctaTitle', e.target.value)}
                 className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-bold"
               />
             </div>
@@ -808,7 +842,7 @@ export const EditAboutSection: React.FC = () => {
               <input
                 type="text"
                 value={formData.ctaButtonText}
-                onChange={e => setFormData({ ...formData, ctaButtonText: e.target.value })}
+                onChange={e => handleChange('ctaButtonText', e.target.value)}
                 className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm"
               />
             </div>
@@ -821,7 +855,7 @@ export const EditAboutSection: React.FC = () => {
             <textarea
               rows={2}
               value={formData.ctaSubtitle}
-              onChange={e => setFormData({ ...formData, ctaSubtitle: e.target.value })}
+              onChange={e => handleChange('ctaSubtitle', e.target.value)}
               className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs leading-relaxed"
             />
           </div>

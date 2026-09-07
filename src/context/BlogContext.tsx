@@ -22,6 +22,7 @@ import {
   ContactMessage,
   AdBannerConfig,
   AboutPageData,
+  AircraftExperience,
   ContactInfoData,
   TechnicalRadarConfig,
   CategorySlug,
@@ -1131,7 +1132,17 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const data = docSnap.data() as AboutPageData;
             if (data && data.authorName) {
               const sanitized: AboutPageData = {
+                ...INITIAL_ABOUT_PAGE_DATA,
                 ...data,
+                aircraftList: Array.isArray(data.aircraftList) && data.aircraftList.length > 0
+                  ? data.aircraftList.map((ac, idx) => ({
+                      id: ac.id || `ac-${idx}`,
+                      model: ac.model || '',
+                      role: ac.role || '',
+                      details: ac.details || '',
+                      imageUrl: ac.imageUrl || ''
+                    }))
+                  : (data.aircraftList || INITIAL_ABOUT_PAGE_DATA.aircraftList),
                 ctaTitle:
                   !data.ctaTitle || /consultoria|palestra|treinamento/i.test(data.ctaTitle)
                     ? 'Quer conversar sobre aviação ou segurança de voo?'
@@ -1149,12 +1160,14 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 data.ctaTitle !== sanitized.ctaTitle ||
                 data.ctaSubtitle !== sanitized.ctaSubtitle
               ) {
-                setDoc(doc(db, 'settings', 'about_page'), sanitized, { merge: true }).catch(() => {});
+                const cleanAutoHeal = sanitizeForFirestore(sanitized);
+                setDoc(doc(db, 'settings', 'about_page'), cleanAutoHeal, { merge: true }).catch(() => {});
               }
             }
           } else {
             // Seed initial about page data if missing
-            setDoc(doc(db, 'settings', 'about_page'), INITIAL_ABOUT_PAGE_DATA).catch(() => {});
+            const cleanInit = sanitizeForFirestore(INITIAL_ABOUT_PAGE_DATA);
+            setDoc(doc(db, 'settings', 'about_page'), cleanInit).catch(() => {});
           }
         },
         err => console.warn('About page listener note:', err)
@@ -2745,19 +2758,33 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const updateAboutData = async (updates: Partial<AboutPageData>) => {
+    // Clean and normalize aircraft list to ensure every item has valid strings and no undefined
+    const sourceAircraftList = updates.aircraftList || aboutData?.aircraftList || [];
+    const normalizedAircraftList: AircraftExperience[] = sourceAircraftList.map((ac, idx) => ({
+      id: ac.id || `ac-${idx}-${Date.now()}`,
+      model: ac.model || '',
+      role: ac.role || '',
+      details: ac.details || '',
+      imageUrl: (ac.imageUrl || '').trim()
+    }));
+
     const nextData: AboutPageData = {
       ...aboutData,
       ...updates,
+      aircraftList: normalizedAircraftList,
       updatedAt: new Date().toISOString()
     };
 
     setAboutData(nextData);
     safeSetJSON(STORAGE_KEY_ABOUT, nextData);
 
+    const cleanDoc = sanitizeForFirestore(nextData);
+
     try {
-      await setDoc(doc(db, 'settings', 'about_page'), nextData, { merge: true });
+      await setDoc(doc(db, 'settings', 'about_page'), cleanDoc, { merge: true });
     } catch (e) {
-      console.warn('Firestore updateAboutData note:', e);
+      console.error('Firestore updateAboutData note:', e);
+      throw e;
     }
   };
 
@@ -2765,7 +2792,8 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setAboutData(INITIAL_ABOUT_PAGE_DATA);
     safeSetJSON(STORAGE_KEY_ABOUT, INITIAL_ABOUT_PAGE_DATA);
     try {
-      await setDoc(doc(db, 'settings', 'about_page'), INITIAL_ABOUT_PAGE_DATA);
+      const cleanDoc = sanitizeForFirestore(INITIAL_ABOUT_PAGE_DATA);
+      await setDoc(doc(db, 'settings', 'about_page'), cleanDoc);
     } catch (e) {
       console.warn('Firestore resetAboutData note:', e);
     }
