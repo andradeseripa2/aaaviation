@@ -4,6 +4,7 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../lib/firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { reportWriteError } from '../lib/writeErrors';
 
 export interface UploadedMediaResult {
   url: string;
@@ -177,8 +178,23 @@ if (typeof window !== 'undefined') {
   }
 }
 
-export function saveToLocalMediaCache(key: string, dataUrl: string, name?: string): Promise<void> {
+/**
+ * Guarda a imagem nos caches locais e, quando `persistRemote` é true (padrão),
+ * também na coleção `media` do Firestore — que é a fonte das capas que o build
+ * transforma em arquivos estáticos para o LinkedIn e o Google.
+ *
+ * Quem apenas LÊ uma imagem (getMediaDataUrl) deve passar `persistRemote: false`:
+ * essa leitura roda no navegador de qualquer visitante, que não tem permissão de
+ * gravar em `media`, e regravar a imagem a cada exibição não tem utilidade.
+ */
+export function saveToLocalMediaCache(
+  key: string,
+  dataUrl: string,
+  name?: string,
+  options: { persistRemote?: boolean } = {}
+): Promise<void> {
   if (!key || !dataUrl) return Promise.resolve();
+  const persistRemote = options.persistRemote !== false;
   const cleanId = key.replace(/^\/api\/media\//, '').replace(/^media:/, '').trim();
   
   localMediaCache.set(cleanId, dataUrl);
@@ -191,8 +207,13 @@ export function saveToLocalMediaCache(key: string, dataUrl: string, name?: strin
 
   // 2. Persist to Firestore media collection for cross-device & cloud synchronization
   let firestorePromise = Promise.resolve();
+
+  // Se esta gravação falha, a capa não chega ao build e sai como a logo no
+  // LinkedIn. Causa comum: o documento passa de 1 MB (a imagem vai em base64).
+  // Antes o erro virava um console.warn e ninguém ficava sabendo.
+  const MEDIA_AREA = 'Imagem na biblioteca de mídia (a capa pode sair sem imagem no LinkedIn)';
   try {
-    if (db && cleanId) {
+    if (persistRemote && db && cleanId) {
       firestorePromise = setDoc(
         doc(db, 'media', cleanId),
         {
@@ -203,16 +224,17 @@ export function saveToLocalMediaCache(key: string, dataUrl: string, name?: strin
         },
         { merge: true }
       ).catch(err => {
-        console.warn('Firestore setDoc media note:', err);
+        reportWriteError(MEDIA_AREA, err);
       });
     }
   } catch (err) {
-    console.warn('Firestore media save note:', err);
+    reportWriteError(MEDIA_AREA, err);
   }
 
   // 3. Send to Express backend /api/media/upload
+  // (Não existe no Netlify; permanece para quando o servidor voltar a rodar.)
   try {
-    fetch('/api/media/upload', {
+    if (persistRemote) fetch('/api/media/upload', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -267,7 +289,7 @@ export async function getMediaDataUrl(urlOrId: string): Promise<string | null> {
         req.onerror = () => resolve(null);
       });
       if (result && result.dataUrl) {
-        saveToLocalMediaCache(cleanId, result.dataUrl);
+        saveToLocalMediaCache(cleanId, result.dataUrl, undefined, { persistRemote: false });
         return result.dataUrl;
       }
     }
@@ -296,7 +318,11 @@ export async function getMediaDataUrl(urlOrId: string): Promise<string | null> {
   // 4. Server API /api/media/ fallback
   try {
     const response = await fetch(`/api/media/${encodeURIComponent(cleanId)}`);
-    if (response.ok) {
+    // No Netlify esta rota não existe e o fallback de SPA devolve o index.html
+    // com status 200. Sem checar o tipo, o HTML virava "data:text/html;base64,..."
+    // e era guardado no cache como se fosse a imagem.
+    const isImage = (response.headers.get('content-type') || '').startsWith('image/');
+    if (response.ok && isImage) {
       const blob = await response.blob();
       const reader = new FileReader();
       const dataUrl = await new Promise<string | null>(resolve => {
@@ -305,7 +331,7 @@ export async function getMediaDataUrl(urlOrId: string): Promise<string | null> {
         reader.readAsDataURL(blob);
       });
       if (dataUrl) {
-        saveToLocalMediaCache(cleanId, dataUrl);
+        saveToLocalMediaCache(cleanId, dataUrl, undefined, { persistRemote: false });
         return dataUrl;
       }
     }

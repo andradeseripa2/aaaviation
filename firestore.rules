@@ -74,9 +74,30 @@ service cloud.firestore {
     match /comments/{commentId} {
       allow read: if true;
       allow create: if true;
+
+      // As respostas ficam DENTRO do documento do comentário (campo `replies`),
+      // então responder, curtir resposta e apagar a própria resposta são todas
+      // alterações no comentário de outra pessoa. A primeira versão desta regra
+      // só liberava `likes` e bloqueava tudo isso para leitores comuns — o admin
+      // não percebia, porque para ele tudo é permitido.
       allow update: if isAdmin()
-                    || changedKeys().hasOnly(['likes']);
-      allow delete: if isAdmin();
+                    // curtir um comentário
+                    || changedKeys().hasOnly(['likes'])
+                    // responder, curtir resposta, apagar a própria resposta e
+                    // atualizar nome/foto nas próprias respostas.
+                    // Limitação conhecida: as regras não conseguem validar item a
+                    // item dentro de um array, então um usuário logado mal-intencionado
+                    // poderia alterar respostas de terceiros. Corrigir exige mover as
+                    // respostas para uma subcoleção — fica para a migração.
+                    || (isSignedIn() && changedKeys().hasOnly(['replies']))
+                    // o autor edita o texto do próprio comentário ou atualiza nome/foto nele
+                    || (isSignedIn()
+                        && resource.data.userId == request.auth.uid
+                        && changedKeys().hasOnly(['content', 'replies', 'userName', 'userAvatar', 'userTitle', 'updatedAt']));
+
+      // O próprio autor pode apagar o comentário (a interface oferece essa opção).
+      allow delete: if isAdmin()
+                    || (isSignedIn() && resource.data.userId == request.auth.uid);
     }
 
     match /ratings/{ratingId} {
@@ -121,10 +142,16 @@ service cloud.firestore {
                       request.resource.data.role == 'reader' || isMasterAdmin()
                     );
 
-      // O usuário edita o próprio perfil, mas NUNCA o próprio 'role'.
-      // É isso que fecha a escalada para admin.
+      // O usuário edita o próprio perfil, mas nunca se promove.
+      // Definir o próprio role como 'reader' é permitido: o login pelo Google
+      // grava `role: existingUserData.role || 'reader'`, e em documentos antigos
+      // sem o campo isso aparece como alteração de role. Rebaixar-se a leitor
+      // não é escalada de privilégio.
       allow update: if isAdmin()
-                    || (isOwner(userId) && !changedKeys().hasAny(['role']));
+                    || (isOwner(userId) && (
+                          !changedKeys().hasAny(['role'])
+                          || request.resource.data.role == 'reader'
+                       ));
 
       allow delete: if isAdmin();
     }
