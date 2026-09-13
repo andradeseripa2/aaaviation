@@ -265,6 +265,12 @@ export interface LeadMaterialConfig {
   publishedSuccessMessage: string; // Message shown when status is 'published'
   emailSubject: string; // Subject for the delivery email
   emailBodyMarkdown: string; // Delivery letter in markdown
+  // Exibe o quadro do material no fim de cada artigo. Só aparece quando for
+  // exatamente `true`: documentos gravados antes deste campo existir (e caches
+  // antigos no navegador dos visitantes) não o têm, e devem ficar escondidos.
+  // Motivo: com o material em construção, "Em Elaboração Técnica" em todo post
+  // passa ao revisor do AdSense a impressão de site inacabado.
+  showOnPosts?: boolean;
   updatedAt?: string;
 }
 
@@ -280,6 +286,7 @@ export interface LeadCapture {
 
 export const INITIAL_LEAD_MATERIAL_CONFIG: LeadMaterialConfig = {
   status: 'draft',
+  showOnPosts: false,
   title: 'Checklist de Auditoria & Segurança SGSO',
   subtitle: 'Planilha técnica educativa e guia de verificação rápida com os pilares recomendados da ANAC/OACI para estudos de conformidade, hangaragem e padronização.',
   badgeText: 'Recurso Educacional Gratuito',

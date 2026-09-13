@@ -1,1 +1,7 @@
-/*    /index.html   200
+# Telas que só existem no app (sem página estática): casco sem anúncio e com noindex
+/login       /app-shell.html   200
+/perfil      /app-shell.html   200
+/favoritos   /app-shell.html   200
+/admin       /app-shell.html   200
+
+# Qualquer outro endereço sem arquivo recebe /404.html com status 404 (padrão do Netlify)
