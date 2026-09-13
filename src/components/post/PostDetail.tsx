@@ -67,7 +67,8 @@ export const PostDetail: React.FC<PostDetailProps> = ({ post }) => {
     getCategoryName,
     getCategoryVisual,
     postMatchesCategoryFilter,
-    aboutData
+    aboutData,
+    leadMaterialConfig
   } = useBlog();
 
   const { user } = useAuth();
@@ -725,8 +726,11 @@ export const PostDetail: React.FC<PostDetailProps> = ({ post }) => {
           {/* 1) Post Rating System (Stars + Popup Login/Signup) */}
           <PostRating postId={post.id} />
 
-          {/* Lead Capture CTA Component: Checklist Técnico SGSO */}
-          <LeadCaptureCTA postTitle={post.title} category={post.category} />
+          {/* Lead Capture CTA Component: Checklist Técnico SGSO.
+              Controlado pela caixa "Exibir no fim dos artigos" no painel admin. */}
+          {leadMaterialConfig?.showOnPosts === true && (
+            <LeadCaptureCTA postTitle={post.title} category={post.category} />
+          )}
 
           {/* 2) Recommended Posts Section ("Você Também Pode Gostar de Ler") */}
           <RecommendedPosts currentPost={post} layout="bottom" />

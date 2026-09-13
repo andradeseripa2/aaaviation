@@ -2,6 +2,11 @@ import fs from 'fs';
 import path from 'path';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, getDocs } from 'firebase/firestore';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import rehypeRaw from 'rehype-raw';
 
 // 1. Read Firebase configuration
 let firebaseConfig = {
@@ -26,6 +31,7 @@ const DIST_DIR = path.join(process.cwd(), 'dist');
 const STATIC_ROUTES = [
   {
     path: '/sobre',
+    editorial: true,
     title: 'Sobre Alexandre Andrade | Especialista em Manutenção & SIPAER',
     description: 'Mais de uma década de experiência na Força Aérea Brasileira (FAB). Inspetor de aeronaves formado pelo ILA e Elemento Credenciado SIPAER para investigação de acidentes aeronáuticos.',
     h1: 'Sobre Alexandre Andrade — Doutrina Técnica & Segurança de Voo',
@@ -33,6 +39,7 @@ const STATIC_ROUTES = [
   },
   {
     path: '/contato',
+    editorial: false,
     title: 'Contato & Dúvidas Técnicas | Alexandre Andrade',
     description: 'Envie suas dúvidas técnicas, sugestões de novos artigos ou mensagens sobre segurança de voo e manutenção aeronáutica para Alexandre Andrade.',
     h1: 'Fale com o Autor — Alexandre Andrade',
@@ -40,6 +47,7 @@ const STATIC_ROUTES = [
   },
   {
     path: '/blog',
+    editorial: true,
     title: 'Artigos Técnicos & Doutrina Aeronáutica | Blog Alexandre Andrade',
     description: 'Acervo completo de análises técnicas sobre manutenção de aeronaves, motores turboélice e reação, inspeções SGSO, fatores humanos e cultura SIPAER.',
     h1: 'Artigos Técnicos & Doutrina de Manutenção Aeronáutica',
@@ -47,6 +55,7 @@ const STATIC_ROUTES = [
   },
   {
     path: '/privacidade',
+    editorial: false,
     title: 'Política de Privacidade & Proteção de Dados (LGPD) | Alexandre Andrade',
     description: 'Conheça nossa política de privacidade e conformidade com a LGPD para armazenamento seguro de dados de sessão, newsletter e contato.',
     h1: 'Política de Privacidade & Segurança de Dados',
@@ -54,6 +63,7 @@ const STATIC_ROUTES = [
   },
   {
     path: '/termos',
+    editorial: false,
     title: 'Termos de Uso & Isenção de Responsabilidade | Alexandre Andrade',
     description: 'Termos de uso do portal Alexandre Andrade Aviation. Aviso institucional sobre caráter estritamente educativo e doutrinário dos artigos.',
     h1: 'Termos de Uso & Aviso Institucional',
@@ -199,26 +209,27 @@ function sniffImageExtension(base64) {
 
 const MEDIA_OUT_DIR = 'media';
 
-// Recebe o coverImage cru do post e devolve um caminho estático servível
-// (ex: "/media/cover_abc.webp"), gravando o arquivo em dist/. Devolve null
-// quando não há como resolver.
-function materializeCover(rawCover, slug, mediaMap) {
-  if (!rawCover) return null;
+// Recebe o endereço cru de uma imagem (capa ou imagem dentro do artigo) e
+// devolve um caminho estático servível (ex: "/media/cover_abc.webp"), gravando o
+// arquivo em dist/. Devolve null quando não há como resolver.
+// `dataBaseName` nomeia o arquivo quando a imagem vem como data URI (sem id).
+function materializeImage(rawUrl, slug, mediaMap, dataBaseName = `cover-${slug}`) {
+  if (!rawUrl) return null;
 
   // Já é uma URL externa utilizável — nada a fazer.
-  if (rawCover.startsWith('http://') || rawCover.startsWith('https://')) return null;
+  if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) return null;
 
   let base64 = '';
   let baseName = '';
 
-  if (rawCover.startsWith('data:')) {
-    base64 = rawCover.slice(rawCover.indexOf(',') + 1);
-    baseName = `cover-${slug}`.slice(0, 80);
-  } else if (rawCover.includes('/api/media/')) {
-    const mediaId = rawCover.split('/api/media/')[1].split('?')[0];
+  if (rawUrl.startsWith('data:')) {
+    base64 = rawUrl.slice(rawUrl.indexOf(',') + 1);
+    baseName = dataBaseName.slice(0, 80);
+  } else if (rawUrl.includes('/api/media/')) {
+    const mediaId = rawUrl.split('/api/media/')[1].split('?')[0];
     const stored = mediaMap.get(mediaId);
     if (!stored) {
-      console.warn(`[SSG] Cover not found in media collection: ${mediaId} (post: ${slug})`);
+      console.warn(`[SSG] Image not found in media collection: ${mediaId} (post: ${slug})`);
       return null;
     }
     base64 = stored.slice(stored.indexOf(',') + 1);
@@ -241,6 +252,143 @@ function materializeCover(rawCover, slug, mediaMap) {
     console.warn(`[SSG] Failed to write cover for ${slug}:`, err?.message || err);
     return null;
   }
+}
+
+// ---------------------------------------------------------------------------
+// VARIANTES DO TEMPLATE: SCRIPT DO ADSENSE, NOINDEX E PÁGINA 404
+//
+// O script do AdSense saiu do index.html. Antes ele ia em todas as respostas do
+// site — inclusive login, perfil, favoritos, painel e qualquer endereço
+// inexistente (que caía na home com status 200). Para o Google, isso são telas
+// com código de anúncio e sem conteúdo do editor, motivo de uma das recusas.
+// Agora ele entra só nas páginas editoriais: home, blog, artigos, categorias e
+// Sobre. Contato, Privacidade e Termos seguem a mesma lista que o componente
+// AdBanner já usa para não exibir anúncios.
+// ---------------------------------------------------------------------------
+
+const ADSENSE_CLIENT = 'ca-pub-6609396265350793';
+const ADSENSE_SCRIPT = `<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${ADSENSE_CLIENT}" crossorigin="anonymous"></script>`;
+
+function withAdSense(html) {
+  return html.replace(/<\/head>/i, `  ${ADSENSE_SCRIPT}\n  </head>`);
+}
+
+function withNoindex(html) {
+  return html.replace(/<\/head>/i, '  <meta name="robots" content="noindex" />\n  </head>');
+}
+
+// A página 404 é HTML puro: sem os scripts do app, o React não sobe e não
+// substitui o aviso de "página não encontrada" pela home.
+function withoutAppScripts(html) {
+  return html
+    .replace(/<script type="module"[^>]*><\/script>\s*/gi, '')
+    .replace(/<link rel="modulepreload"[^>]*>\s*/gi, '');
+}
+
+function withoutCanonical(html) {
+  return html.replace(/\s*<link rel="canonical"[^>]*>/i, '');
+}
+
+// ---------------------------------------------------------------------------
+// CATEGORIAS
+//
+// A lista fixa (CATEGORIES) tinha só 4 categorias, mas os posts publicados usam
+// 6 — "informacao" e "quiz" nunca tiveram página estática nem entrada no
+// sitemap. Funcionavam porque todo endereço desconhecido caía na home e o app
+// montava a tela; com o 404 real, quebrariam. Agora a lista vem do Firestore,
+// mantendo nome e descrição fixos das 4 originais (já indexadas).
+// ---------------------------------------------------------------------------
+
+async function fetchCategoriesFromFirestore() {
+  try {
+    const app = initializeApp(firebaseConfig, 'categories-app');
+    const db = firebaseConfig.firestoreDatabaseId
+      ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
+      : getFirestore(app);
+    const snap = await getDocs(collection(db, 'categories'));
+    return snap.docs.map(d => d.data()).filter(c => c && c.slug);
+  } catch (err) {
+    console.error('[SSG] Could not load categories collection:', err?.message || err);
+    return [];
+  }
+}
+
+function buildCategoryList(firestoreCategories, posts) {
+  const bySlug = new Map(CATEGORIES.map(c => [c.slug, { ...c }]));
+  for (const c of firestoreCategories) {
+    if (bySlug.has(c.slug)) continue;
+    const name = c.name || c.slug;
+    bySlug.set(c.slug, {
+      slug: c.slug,
+      name,
+      description: c.description || `Artigos técnicos de aviação na categoria ${name}.`
+    });
+  }
+  for (const p of posts) {
+    if (p.category && !bySlug.has(p.category)) {
+      const name = p.category.charAt(0).toUpperCase() + p.category.slice(1);
+      bySlug.set(p.category, { slug: p.category, name, description: `Artigos técnicos de aviação na categoria ${name}.` });
+    }
+  }
+  return [...bySlug.values()];
+}
+
+// ---------------------------------------------------------------------------
+// ARTIGO COMPLETO NO HTML ESTÁTICO
+//
+// Antes o gerador pegava só os 10 primeiros parágrafos e os achatava em texto
+// corrido — os artigos têm de 28 a 89, com títulos, listas e tabelas. Quem não
+// executa JavaScript lia um quarto do texto, sem estrutura. Agora o markdown é
+// renderizado inteiro com as mesmas bibliotecas do site (react-markdown +
+// remark-gfm + rehype-raw).
+// ---------------------------------------------------------------------------
+
+const ARTICLE_STYLE = `<style>
+  .ssg-article { color: #334155; line-height: 1.75; font-size: 1rem; }
+  .ssg-article h2 { font-size: 1.5rem; font-weight: 800; color: #0A192F; margin: 2rem 0 0.75rem; }
+  .ssg-article h3 { font-size: 1.25rem; font-weight: 700; color: #0A192F; margin: 1.5rem 0 0.5rem; }
+  .ssg-article h4 { font-size: 1.05rem; font-weight: 700; color: #0A192F; margin: 1.25rem 0 0.5rem; }
+  .ssg-article p { margin: 0 0 1rem; }
+  .ssg-article ul { list-style: disc; padding-left: 1.5rem; margin: 0 0 1rem; }
+  .ssg-article ol { list-style: decimal; padding-left: 1.5rem; margin: 0 0 1rem; }
+  .ssg-article li { margin: 0.25rem 0; }
+  .ssg-article a { color: #1D4ED8; text-decoration: underline; }
+  .ssg-article blockquote { border-left: 4px solid #BFDBFE; padding-left: 1rem; margin: 1rem 0; color: #475569; }
+  .ssg-article img { max-width: 100%; height: auto; border-radius: 1rem; margin: 1rem 0; }
+  .ssg-article table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.9rem; display: block; overflow-x: auto; }
+  .ssg-article th, .ssg-article td { border: 1px solid #E2E8F0; padding: 0.5rem 0.75rem; text-align: left; }
+  .ssg-article th { background: #F1F5F9; font-weight: 700; }
+  .ssg-article code { background: #F1F5F9; padding: 0.1rem 0.3rem; border-radius: 0.25rem; }
+</style>`;
+
+function renderArticleHtml(markdown, slug, mediaMap) {
+  let imageIndex = 0;
+  // Imagens dentro do texto sofrem do mesmo problema das capas (/api/media/ e
+  // data URI não abrem fora do app): viram arquivos estáticos em dist/media/.
+  const withStaticImages = (markdown || '').replace(
+    /!\[([^\]]*)\]\(\s*([^)\s]+)((?:\s+"[^"]*")?)\s*\)/g,
+    (whole, alt, url, title) => {
+      imageIndex++;
+      const resolved = materializeImage(url, slug, mediaMap, `img-${slug}-${imageIndex}`);
+      if (resolved) return `![${alt}](${resolved}${title})`;
+      // Irrecuperável: melhor sem a imagem do que um data URI gigante ou um link quebrado.
+      if (url.startsWith('data:') || url.includes('/api/media/')) return '';
+      return whole;
+    }
+  );
+
+  return renderToStaticMarkup(
+    createElement(
+      ReactMarkdown,
+      {
+        remarkPlugins: [remarkGfm],
+        rehypePlugins: [rehypeRaw],
+        // O título do post já é o <h1> da página; um "# Título" no texto vira <h2>.
+        components: { h1: 'h2' }
+      },
+      withStaticImages
+    )
+  );
 }
 
 function escapeHtml(text = '') {
@@ -379,6 +527,10 @@ function generateStaticHtml(templateHtml, meta) {
     html = html.replace(/<\/head>/i, schemaTag);
   }
 
+  if (meta.editorial) {
+    html = withAdSense(html);
+  }
+
   return html;
 }
 
@@ -422,7 +574,7 @@ async function runSSG() {
   const mediaMap = await fetchMediaMap();
   let resolvedCovers = 0;
   for (const post of posts) {
-    const resolved = materializeCover(post.coverImage, post.slug, mediaMap);
+    const resolved = materializeImage(post.coverImage, post.slug, mediaMap);
     if (resolved) {
       post.coverImage = resolved;
       resolvedCovers++;
@@ -435,6 +587,9 @@ async function runSSG() {
     }
   }
   console.log(`[SSG] Covers materialized as static files: ${resolvedCovers}`);
+
+  const categories = buildCategoryList(await fetchCategoriesFromFirestore(), posts);
+  const generatedCategories = [];
 
   const generatedRoutes = [];
 
@@ -476,6 +631,7 @@ async function runSSG() {
       h1: page.h1,
       bodyHtml: bodyContent,
       type: 'website',
+      editorial: page.editorial,
       schemaJson: {
         '@context': 'https://schema.org',
         '@type': 'WebPage',
@@ -491,22 +647,23 @@ async function runSSG() {
   }
 
   // 2. Generate Category Pages
-  for (const cat of CATEGORIES) {
+  for (const cat of categories) {
     const categoryPosts = posts.filter(p => p.category === cat.slug);
-    let postListHtml = '';
-    if (categoryPosts.length > 0) {
-      postListHtml = `<ul class="space-y-3 mt-4">` +
-        categoryPosts.map(p => `
-          <li class="p-4 border border-slate-200 rounded-xl bg-white">
-            <a href="/post/${escapeHtml(p.slug)}" class="font-bold text-[#0A192F] hover:text-blue-600 block text-base">${escapeHtml(p.title)}</a>
-            <p class="text-xs text-slate-600 mt-1">${escapeHtml(p.excerpt || '')}</p>
-            <span class="text-[11px] text-slate-400 font-mono mt-2 inline-block">${escapeHtml(p.date || '')} • ${p.readTimeMinutes || 5} min de leitura</span>
-          </li>
-        `).join('') +
-        `</ul>`;
-    } else {
-      postListHtml = `<p class="text-sm text-slate-500">Artigos técnicos em fase de edição para esta categoria.</p>`;
+    // Categoria sem artigo não ganha página: ela diria "em fase de edição" e,
+    // com o script de anúncio, seria uma tela sem conteúdo. O endereço cai no 404.
+    if (categoryPosts.length === 0) {
+      console.log(`[SSG] Skipping empty category: /categoria/${cat.slug}`);
+      continue;
     }
+    const postListHtml = `<ul class="space-y-3 mt-4">` +
+      categoryPosts.map(p => `
+        <li class="p-4 border border-slate-200 rounded-xl bg-white">
+          <a href="/post/${escapeHtml(p.slug)}" class="font-bold text-[#0A192F] hover:text-blue-600 block text-base">${escapeHtml(p.title)}</a>
+          <p class="text-xs text-slate-600 mt-1">${escapeHtml(p.excerpt || '')}</p>
+          <span class="text-[11px] text-slate-400 font-mono mt-2 inline-block">${escapeHtml(p.date || '')} • ${p.readTimeMinutes || 5} min de leitura</span>
+        </li>
+      `).join('') +
+      `</ul>`;
 
     const catPath = `/categoria/${cat.slug}`;
     const html = generateStaticHtml(templateHtml, {
@@ -516,6 +673,7 @@ async function runSSG() {
       h1: `${cat.name} — Acervo Técnico`,
       bodyHtml: `<p class="text-sm text-slate-600 mb-6">${escapeHtml(cat.description)}</p>${postListHtml}`,
       type: 'website',
+      editorial: true,
       schemaJson: {
         '@context': 'https://schema.org',
         '@type': 'CollectionPage',
@@ -527,18 +685,14 @@ async function runSSG() {
 
     writeHtmlFile(`categoria/${cat.slug}`, html);
     generatedRoutes.push(catPath);
+    generatedCategories.push(cat);
     console.log(`[SSG] Generated static HTML: ${catPath}/index.html & ${catPath}.html`);
   }
 
   // 3. Generate Post Pages (Real Published Articles from Firestore)
   for (const post of posts) {
     const plainExcerpt = post.excerpt || markdownToPlainText(post.content).slice(0, 160) || 'Artigo técnico sobre aviação por Alexandre Andrade.';
-    const paragraphs = (post.content || '')
-      .split(/\n\n+/)
-      .filter(Boolean)
-      .slice(0, 10)
-      .map(p => `<p class="mb-4">${escapeHtml(markdownToPlainText(p))}</p>`)
-      .join('');
+    const articleHtml = renderArticleHtml(post.content, post.slug, mediaMap);
 
     const postBodyHtml = `
       <div class="mb-6 pb-4 border-b border-slate-200 flex items-center justify-between text-xs text-slate-500 font-mono">
@@ -546,8 +700,9 @@ async function runSSG() {
         <span>${escapeHtml(post.date || '')} • ${post.readTimeMinutes || 5} min de leitura</span>
       </div>
       ${post.coverImage ? `<div class="mb-6"><img src="${escapeHtml(post.coverImage)}" alt="${escapeHtml(post.title)}" class="w-full h-auto rounded-2xl object-cover max-h-96" /></div>` : ''}
-      <div class="article-content space-y-4">
-        ${paragraphs || `<p>${escapeHtml(plainExcerpt)}</p>`}
+      ${ARTICLE_STYLE}
+      <div class="article-content ssg-article">
+        ${articleHtml || `<p>${escapeHtml(plainExcerpt)}</p>`}
       </div>
     `;
 
@@ -588,7 +743,8 @@ async function runSSG() {
       datePublished: post.date,
       h1: post.title,
       bodyHtml: postBodyHtml,
-      schemaJson: postSchema
+      schemaJson: postSchema,
+      editorial: true
     });
 
     writeHtmlFile(`post/${post.slug}`, postHtml);
@@ -631,7 +787,38 @@ async function runSSG() {
       </div>
     </div>`
   );
-  fs.writeFileSync(indexHtmlPath, homeWithLinks, 'utf8');
+  fs.writeFileSync(indexHtmlPath, withAdSense(homeWithLinks), 'utf8');
+
+  // Casco do app para as telas que só existem no navegador (login, perfil,
+  // favoritos, painel). Mesmo app, sem script de anúncio e fora do índice.
+  fs.writeFileSync(path.join(DIST_DIR, 'app-shell.html'), withoutCanonical(withNoindex(templateHtml)), 'utf8');
+
+  // Página 404 de verdade. Antes, qualquer endereço inventado respondia 200 com
+  // a home e o código de anúncio. O Netlify serve este arquivo com status 404
+  // sempre que não houver arquivo nem regra para o endereço.
+  const latestLinks = posts
+    .slice(0, 6)
+    .map(p => `<li class="py-1"><a href="/post/${escapeHtml(p.slug)}" class="text-[#1D4ED8] hover:underline">${escapeHtml(p.title)}</a></li>`)
+    .join('');
+  const notFoundHtml = generateStaticHtml(templateHtml, {
+    title: 'Página não encontrada',
+    description: 'O endereço acessado não existe ou foi removido.',
+    url: '/',
+    h1: 'Página não encontrada',
+    bodyHtml: `
+      <p>O endereço que você acessou não existe ou foi removido.</p>
+      <p class="mt-4"><a href="/" class="text-[#1D4ED8] hover:underline">Voltar para o início</a> ·
+        <a href="/blog" class="text-[#1D4ED8] hover:underline">Ver todos os artigos</a></p>
+      <h2 class="text-lg font-bold text-[#0A192F] mt-8 mb-2">Artigos recentes</h2>
+      <ul>${latestLinks}</ul>`,
+    type: 'website',
+    editorial: false
+  });
+  fs.writeFileSync(
+    path.join(DIST_DIR, '404.html'),
+    withoutAppScripts(withoutCanonical(withNoindex(notFoundHtml))),
+    'utf8'
+  );
 
   // 5. Update Sitemap XML with real published posts
   const sitemapXml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -668,7 +855,7 @@ async function runSSG() {
   </url>
 
   <!-- Categorias -->
-${CATEGORIES.map(c => `  <url>
+${generatedCategories.map(c => `  <url>
     <loc>${DOMAIN}/categoria/${c.slug}</loc>
     <lastmod>${new Date().toISOString().split('T')[0]}</lastmod>
     <changefreq>weekly</changefreq>
@@ -706,10 +893,19 @@ ${posts.map(p => `  <url>
   }
 
   // 6. Ensure Netlify _redirects exist in dist/
+  // Sem a antiga regra "/*  /index.html  200": ela fazia todo endereço inexistente
+  // responder 200 com a home. Agora só as telas que existem apenas no app caem no
+  // casco; o resto, sem arquivo, recebe o 404.html.
+  // Consequência aceita: um artigo recém-publicado dá 404 no acesso direto até o
+  // build disparado pela publicação terminar (cerca de 1 a 2 minutos).
   const redirectsContent = `
-# Netlify Static Redirects: Static files are served directly (200 OK)
-# Fallback SPA rule for any client-side dynamic routes:
-/*    /index.html   200
+# Telas que só existem no app (sem página estática): casco sem anúncio e com noindex
+/login       /app-shell.html   200
+/perfil      /app-shell.html   200
+/favoritos   /app-shell.html   200
+/admin       /app-shell.html   200
+
+# Qualquer outro endereço sem arquivo recebe /404.html com status 404 (padrão do Netlify)
 `.trim();
 
   fs.writeFileSync(path.join(DIST_DIR, '_redirects'), redirectsContent + '\n', 'utf8');

@@ -2394,6 +2394,7 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // SGSO Lead Material Management
   const updateLeadMaterialConfig = async (updates: Partial<LeadMaterialConfig>): Promise<{ success: boolean; message: string }> => {
+    const previous = leadMaterialConfig;
     try {
       const updated: LeadMaterialConfig = {
         ...leadMaterialConfig,
@@ -2408,6 +2409,9 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { success: true, message: 'Configurações do Checklist SGSO salvas com sucesso!' };
     } catch (err: any) {
       console.error('Error updating lead material config:', err);
+      // Sem desfazer, a tela mostraria a mudança enquanto o banco continua como antes.
+      setLeadMaterialConfig(previous);
+      safeSetJSON(STORAGE_KEY_LEAD_MATERIAL, previous);
       return { success: false, message: err?.message || 'Erro ao salvar material SGSO.' };
     }
   };

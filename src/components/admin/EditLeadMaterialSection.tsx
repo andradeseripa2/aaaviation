@@ -161,12 +161,41 @@ export const EditLeadMaterialSection: React.FC = () => {
     }, 0);
   };
 
+  // Visibilidade do quadro no fim dos artigos.
+  // Lida do valor salvo (contexto), não do formulário, e gravada na hora, sozinha:
+  // assim marcar/desmarcar não depende do botão "Salvar Alterações" nem leva junto
+  // edições do formulário que ainda não foram salvas.
+  const showOnPosts = leadMaterialConfig?.showOnPosts === true;
+  const [isSavingVisibility, setIsSavingVisibility] = useState(false);
+
+  const handleToggleVisibility = async (next: boolean) => {
+    setIsSavingVisibility(true);
+    setSaveFeedback(null);
+    const res = await updateLeadMaterialConfig({ showOnPosts: next });
+    setIsSavingVisibility(false);
+    if (res.success) {
+      setFormData(prev => ({ ...prev, showOnPosts: next }));
+      setSaveFeedback({
+        success: true,
+        message: next
+          ? 'O quadro do material agora aparece no fim dos artigos.'
+          : 'O quadro do material foi retirado dos artigos.'
+      });
+    } else {
+      setSaveFeedback({ success: false, message: `Não foi possível alterar a exibição: ${res.message}` });
+    }
+    setTimeout(() => setSaveFeedback(null), 4500);
+  };
+
   // Save changes to Firestore
   const handleSave = async () => {
     setIsSaving(true);
     setSaveFeedback(null);
 
-    const res = await updateLeadMaterialConfig(formData);
+    // A visibilidade vem do valor salvo, não do formulário: o formulário é montado
+    // uma vez e pode estar desatualizado, e salvar o texto não deve reexibir nem
+    // esconder o quadro sem querer.
+    const res = await updateLeadMaterialConfig({ ...formData, showOnPosts });
     setIsSaving(false);
     setSaveFeedback(res);
 
@@ -301,6 +330,36 @@ export const EditLeadMaterialSection: React.FC = () => {
             </button>
           </div>
         </div>
+
+        {/* Visibilidade do quadro no fim dos artigos */}
+        <label
+          className={`mt-6 flex items-start gap-3 p-4 rounded-2xl border cursor-pointer transition-colors ${
+            showOnPosts
+              ? 'bg-emerald-50/60 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-900/60'
+              : 'bg-slate-50 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800'
+          } ${isSavingVisibility ? 'opacity-60 cursor-wait' : ''}`}
+        >
+          <input
+            type="checkbox"
+            checked={showOnPosts}
+            disabled={isSavingVisibility}
+            onChange={e => handleToggleVisibility(e.target.checked)}
+            className="mt-0.5 w-4 h-4 accent-emerald-600 cursor-pointer shrink-0"
+          />
+          <div className="text-xs">
+            <div className="font-bold font-['Outfit'] text-[#0A192F] dark:text-white flex items-center gap-2">
+              <Eye className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+              <span>Exibir o quadro do material no fim dos artigos</span>
+              {isSavingVisibility && <RefreshCw className="w-3.5 h-3.5 animate-spin text-slate-500" />}
+            </div>
+            <p className="text-[#64748B] dark:text-slate-400 mt-1 leading-relaxed">
+              {showOnPosts
+                ? 'Visível: os leitores veem o quadro de cadastro no fim de cada artigo.'
+                : 'Oculto: o quadro não aparece para os leitores. Recomendado enquanto o material estiver em construção.'}{' '}
+              A alteração é salva na hora, sem precisar clicar em "Salvar Alterações".
+            </p>
+          </div>
+        </label>
 
         {/* Feedback Message */}
         {saveFeedback && (
