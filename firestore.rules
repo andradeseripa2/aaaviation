@@ -1,70 +1,151 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    function isAuthenticated() {
+
+    // ============================================================
+    // FUNÇÕES AUXILIARES
+    // ============================================================
+
+    function isSignedIn() {
       return request.auth != null;
     }
-    
+
     function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
+      return isSignedIn() && request.auth.uid == userId;
     }
-    
+
+    // Admin mestre: reconhecido direto pelo e-mail do token de autenticação.
+    // Não depende de nenhum documento no banco, então não pode ser forjado.
+    function isMasterAdmin() {
+      return isSignedIn() &&
+             request.auth.token.email == 'andradeseripa2@gmail.com';
+    }
+
+    // Admin: o mestre, ou quem tiver role 'admin' no próprio documento de usuário.
+    // Seguro porque a regra de /users abaixo impede que alguém altere o próprio role.
     function isAdmin() {
-      return isAuthenticated() && (
-        request.auth.token.email == 'andradeseripa2@gmail.com' ||
+      return isMasterAdmin() || (
+        isSignedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
       );
     }
 
-    // Users Collection
-    match /users/{userId} {
-      allow read, write: if true;
+    // Conjunto de campos que esta escrita está alterando.
+    function changedKeys() {
+      return request.resource.data.diff(resource.data).affectedKeys();
     }
 
-    // Posts Collection
+    // ============================================================
+    // CONTEÚDO PÚBLICO — leitura livre, escrita só do admin
+    // A leitura pública de /posts é obrigatória: o build do SSG
+    // (scripts/generate-ssg.js) lê essa coleção sem autenticação.
+    // ============================================================
+
     match /posts/{postId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create, delete: if isAdmin();
+
+      // O admin edita tudo. O visitante anônimo só pode mexer nos dois
+      // contadores — qualquer outro campo na mesma escrita derruba a regra.
+      allow update: if isAdmin()
+                    || changedKeys().hasOnly(['viewsCount', 'likesCount']);
     }
 
-    // Comments Collection
-    match /comments/{commentId} {
-      allow read, write: if true;
-    }
-
-    // Ratings Collection
-    match /ratings/{ratingId} {
-      allow read, write: if true;
-    }
-
-    // Newsletter Subscribers
-    match /newsletter/{subId} {
-      allow read, write: if true;
-    }
-
-    // Contact Messages
-    match /contacts/{msgId} {
-      allow read, write: if true;
-    }
-
-    // Categories Collection
     match /categories/{categoryId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isAdmin();
     }
 
-    // Settings (Ads, Categories, etc)
     match /settings/{settingId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isAdmin();
     }
 
-    // Briefings & Newsletter Campaigns
-    match /briefings/{briefingId} {
-      allow read, write: if true;
-    }
-
-    // Media & Article Images Collection
     match /media/{mediaId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isAdmin();
     }
+
+    // ============================================================
+    // INTERAÇÃO DO LEITOR — qualquer um participa, só o admin modera
+    // ============================================================
+
+    match /comments/{commentId} {
+      allow read: if true;
+      allow create: if true;
+      allow update: if isAdmin()
+                    || changedKeys().hasOnly(['likes']);
+      allow delete: if isAdmin();
+    }
+
+    match /ratings/{ratingId} {
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if isAdmin();
+    }
+
+    // ============================================================
+    // DADOS PESSOAIS — entram, mas não saem
+    // Qualquer visitante cria o próprio registro (é assim que o
+    // cadastro funciona), mas só o admin consegue ler a base.
+    // ============================================================
+
+    // ESTA COLEÇÃO NÃO TINHA REGRA NENHUMA: todo lead capturado
+    // desde o lançamento foi recusado pelo banco e perdido.
+    match /leads/{leadId} {
+      allow create: if true;
+      allow read, update, delete: if isAdmin();
+    }
+
+    match /newsletter/{subId} {
+      allow create: if true;
+      allow read, update, delete: if isAdmin();
+    }
+
+    match /contacts/{msgId} {
+      allow create: if true;
+      allow read, update, delete: if isAdmin();
+    }
+
+    // ============================================================
+    // USUÁRIOS
+    // ============================================================
+
+    match /users/{userId} {
+      // Leitura exige login. Fecha a listagem anônima de e-mails dos leitores.
+      allow read: if isSignedIn();
+
+      // No cadastro, ninguém nasce admin (exceto o e-mail mestre).
+      allow create: if isOwner(userId) && (
+                      request.resource.data.role == 'reader' || isMasterAdmin()
+                    );
+
+      // O usuário edita o próprio perfil, mas NUNCA o próprio 'role'.
+      // É isso que fecha a escalada para admin.
+      allow update: if isAdmin()
+                    || (isOwner(userId) && !changedKeys().hasAny(['role']));
+
+      allow delete: if isAdmin();
+    }
+
+    // ============================================================
+    // NOTIFICAÇÕES
+    // Também estava sem regra nenhuma — nunca funcionou.
+    // ============================================================
+
+    match /notifications/{notifId} {
+      allow read, create, update, delete: if isSignedIn();
+    }
+
+    // ============================================================
+    // ADMINISTRATIVO
+    // ============================================================
+
+    match /briefings/{briefingId} {
+      allow read, write: if isAdmin();
+    }
+
+    // Qualquer coleção não listada acima fica negada por padrão.
   }
 }

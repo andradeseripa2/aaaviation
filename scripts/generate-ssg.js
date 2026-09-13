@@ -148,6 +148,101 @@ async function fetchPostsFromFirestore() {
   return postsList;
 }
 
+// ---------------------------------------------------------------------------
+// RESOLUÇÃO DE CAPAS
+//
+// As capas dos artigos chegam do Firestore em dois formatos que NÃO funcionam
+// como og:image para o LinkedIn/Google:
+//   1. "/api/media/<id>" — rota do servidor Express, que não existe no Netlify
+//      (hospedagem estática). A URL devolve o index.html em vez da imagem.
+//   2. "data:image/...;base64,..." — data URI embutido, que os robôs de preview
+//      não aceitam como imagem.
+//
+// Em ambos os casos os bytes existem: ficam na coleção `media` do Firestore
+// (campo dataUrl), indexada pelo mesmo nome de arquivo usado na URL.
+// A solução é gravar esses bytes como arquivos estáticos reais dentro de dist/
+// no momento do build, e apontar as meta tags para eles.
+// ---------------------------------------------------------------------------
+
+async function fetchMediaMap() {
+  const map = new Map();
+  try {
+    const app = initializeApp(firebaseConfig, 'media-app');
+    const db = firebaseConfig.firestoreDatabaseId
+      ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
+      : getFirestore(app);
+
+    const snap = await getDocs(collection(db, 'media'));
+    snap.forEach(docSnap => {
+      const data = docSnap.data();
+      const dataUrl = data?.dataUrl || data?.url || '';
+      if (dataUrl.startsWith('data:')) {
+        map.set(data?.id || docSnap.id, dataUrl);
+      }
+    });
+    console.log(`[SSG] Media library loaded: ${map.size} images available for cover resolution.`);
+  } catch (err) {
+    console.error('[SSG] Could not load media collection:', err?.message || err);
+  }
+  return map;
+}
+
+// Identifica o formato real pelos bytes, não pelo rótulo do data URI:
+// há capas marcadas como "image/webp" cujo conteúdo é, de fato, JPEG.
+function sniffImageExtension(base64) {
+  if (base64.startsWith('/9j/')) return 'jpg';           // FF D8 FF — JPEG
+  if (base64.startsWith('iVBORw0KGgo')) return 'png';    // 89 50 4E 47 — PNG
+  if (base64.startsWith('UklGR')) return 'webp';         // "RIFF" — WebP
+  if (base64.startsWith('R0lGOD')) return 'gif';         // "GIF8" — GIF
+  return 'jpg';
+}
+
+const MEDIA_OUT_DIR = 'media';
+
+// Recebe o coverImage cru do post e devolve um caminho estático servível
+// (ex: "/media/cover_abc.webp"), gravando o arquivo em dist/. Devolve null
+// quando não há como resolver.
+function materializeCover(rawCover, slug, mediaMap) {
+  if (!rawCover) return null;
+
+  // Já é uma URL externa utilizável — nada a fazer.
+  if (rawCover.startsWith('http://') || rawCover.startsWith('https://')) return null;
+
+  let base64 = '';
+  let baseName = '';
+
+  if (rawCover.startsWith('data:')) {
+    base64 = rawCover.slice(rawCover.indexOf(',') + 1);
+    baseName = `cover-${slug}`.slice(0, 80);
+  } else if (rawCover.includes('/api/media/')) {
+    const mediaId = rawCover.split('/api/media/')[1].split('?')[0];
+    const stored = mediaMap.get(mediaId);
+    if (!stored) {
+      console.warn(`[SSG] Cover not found in media collection: ${mediaId} (post: ${slug})`);
+      return null;
+    }
+    base64 = stored.slice(stored.indexOf(',') + 1);
+    baseName = mediaId.replace(/\.[a-z0-9]+$/i, '');
+  } else {
+    // Caminho estático comum (ex: "/logoqua.webp") — já funciona.
+    return null;
+  }
+
+  if (!base64) return null;
+
+  try {
+    const ext = sniffImageExtension(base64);
+    const fileName = `${baseName}.${ext}`;
+    const outDir = path.join(DIST_DIR, MEDIA_OUT_DIR);
+    fs.mkdirSync(outDir, { recursive: true });
+    fs.writeFileSync(path.join(outDir, fileName), Buffer.from(base64, 'base64'));
+    return `/${MEDIA_OUT_DIR}/${fileName}`;
+  } catch (err) {
+    console.warn(`[SSG] Failed to write cover for ${slug}:`, err?.message || err);
+    return null;
+  }
+}
+
 function escapeHtml(text = '') {
   return String(text)
     .replace(/&/g, '&amp;')
@@ -213,6 +308,12 @@ function generateStaticHtml(templateHtml, meta) {
     /<meta property="og:type" content=".*?" \/>/gi,
     `<meta property="og:type" content="${escapeHtml(meta.type || 'website')}" />`
   );
+
+  // As dimensões do template são fixas (1536x1024) e descrevem apenas a imagem
+  // padrão da home. Em qualquer página com capa própria elas ficam erradas, e
+  // uma dimensão errada atrapalha mais o robô de preview do que a ausência
+  // dela — o crawler baixa a imagem e mede sozinho.
+  html = html.replace(/\s*<meta property="og:image:(width|height)" content=".*?" \/>/gi, '');
 
   // Replace Twitter Card Tags
   html = html.replace(
@@ -314,6 +415,26 @@ async function runSSG() {
 
   // Fetch real published posts directly from Firestore using Firebase JS SDK
   const posts = await fetchPostsFromFirestore();
+
+  // Grava as capas que só existem como data URI ou como /api/media/ (rota morta
+  // no Netlify) em arquivos estáticos reais, para que og:image aponte para uma
+  // imagem que os robôs de preview conseguem baixar.
+  const mediaMap = await fetchMediaMap();
+  let resolvedCovers = 0;
+  for (const post of posts) {
+    const resolved = materializeCover(post.coverImage, post.slug, mediaMap);
+    if (resolved) {
+      post.coverImage = resolved;
+      resolvedCovers++;
+      console.log(`[SSG] Cover materialized: ${post.slug} -> ${resolved}`);
+    } else if (!post.coverImage || post.coverImage.startsWith('data:') || post.coverImage.includes('/api/media/')) {
+      // Não foi possível resolver: cai na logo, que é preferível a uma
+      // og:image quebrada (o LinkedIn simplesmente não mostra card com imagem).
+      console.warn(`[SSG] Cover unresolved, falling back to logo: ${post.slug}`);
+      post.coverImage = '/logoqua.webp';
+    }
+  }
+  console.log(`[SSG] Covers materialized as static files: ${resolvedCovers}`);
 
   const generatedRoutes = [];
 
@@ -424,7 +545,7 @@ async function runSSG() {
         <span>Publicado por <strong>${escapeHtml(post.author?.name || 'Alexandre Andrade')}</strong></span>
         <span>${escapeHtml(post.date || '')} • ${post.readTimeMinutes || 5} min de leitura</span>
       </div>
-      ${post.coverImage && !post.coverImage.startsWith('/api/media/') ? `<div class="mb-6"><img src="${escapeHtml(post.coverImage)}" alt="${escapeHtml(post.title)}" class="w-full h-auto rounded-2xl object-cover max-h-96" /></div>` : ''}
+      ${post.coverImage ? `<div class="mb-6"><img src="${escapeHtml(post.coverImage)}" alt="${escapeHtml(post.title)}" class="w-full h-auto rounded-2xl object-cover max-h-96" /></div>` : ''}
       <div class="article-content space-y-4">
         ${paragraphs || `<p>${escapeHtml(plainExcerpt)}</p>`}
       </div>
