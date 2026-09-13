@@ -80,23 +80,6 @@ export interface CommentReply {
   content: string;
   createdAt: string;
   likes: number;
-  isAIReply?: boolean;
-  agentId?: string;
-  agentBadge?: string;
-}
-
-export interface SuggestedAIReply {
-  id: string;
-  commentId: string;
-  agentId: string;
-  agentName: string;
-  agentAvatar: string;
-  agentBadge?: string;
-  agentRole?: string;
-  text: string;
-  reasoning?: string;
-  generatedAt: string;
-  status: 'pending' | 'approved' | 'dismissed';
 }
 
 export interface Comment {
@@ -112,34 +95,6 @@ export interface Comment {
   status: 'approved' | 'pending' | 'rejected';
   likes: number;
   replies?: CommentReply[];
-  suggestedAIReply?: SuggestedAIReply;
-  aiAutoReplyScheduledAt?: string; // For 2-minute delay queue
-}
-
-export interface AIAgentPersona {
-  id: string;
-  name: string;
-  role: string;
-  avatar: string;
-  badge: string;
-  tone: string;
-  specialties: string[];
-  systemPrompt: string;
-  enabled: boolean;
-  isDefault?: boolean;
-  greetingStyle?: string;
-}
-
-export interface AIModerationConfig {
-  enabled: boolean;
-  autoReplyMode: 'manual_approval' | 'auto_delay_2min' | 'auto_instant';
-  delayMinutes: number; // default 2
-  dailyReplyLimit: number; // default 30
-  smartRoutingEnabled: boolean; // Route dynamically to best suited persona
-  defaultAgentId: string;
-  antiSpamEnabled: boolean;
-  notifyAdminOnGeneration: boolean;
-  updatedAt?: string;
 }
 
 export interface UserNotification {

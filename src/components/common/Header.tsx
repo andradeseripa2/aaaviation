@@ -369,7 +369,7 @@ export const Header: React.FC = () => {
                     </p>
                     <ul className="space-y-1 text-[11px] text-[#475569] dark:text-slate-300">
                       <li>• Download de Artigos em PDF Executivo</li>
-                      <li>• Comentários & Respostas com IA</li>
+                      <li>• Comentários & Debates Técnicos</li>
                       <li>• Favoritos salvos na nuvem</li>
                     </ul>
                   </div>
@@ -583,7 +583,7 @@ export const Header: React.FC = () => {
                     </div>
 
                     <p className="text-[11px] text-[#64748B] dark:text-slate-400 leading-tight">
-                      Baixe artigos em PDF executivo, participe dos debates com IA e salve seus artigos.
+                      Baixe artigos em PDF executivo, participe dos debates técnicos e salve seus artigos.
                     </p>
 
                     <div className="grid grid-cols-2 gap-2 pt-1">

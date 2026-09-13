@@ -19,7 +19,6 @@ import {
   Reply,
   CornerDownRight,
   Info,
-  Bot,
   Sparkles
 } from 'lucide-react';
 
@@ -30,7 +29,6 @@ interface CommentSectionProps {
 export const CommentSection: React.FC<CommentSectionProps> = ({ post }) => {
   const {
     comments,
-    aiAgents,
     addComment,
     addCommentReply,
     deleteComment,
@@ -45,11 +43,6 @@ export const CommentSection: React.FC<CommentSectionProps> = ({ post }) => {
   const { navigate } = useBlog();
 
   const getCommenterAvatar = (userId: string, fallbackAvatar: string) => {
-    if (userId?.startsWith('ai-agent-')) {
-      const agentId = userId.replace('ai-agent-', '');
-      const agent = aiAgents.find(a => a.id === agentId);
-      if (agent?.avatar) return resolveImageUrl(agent.avatar);
-    }
     if (user && user.id === userId) {
       return resolveImageUrl(user.avatar || fallbackAvatar);
     }
@@ -58,11 +51,6 @@ export const CommentSection: React.FC<CommentSectionProps> = ({ post }) => {
   };
 
   const getCommenterName = (userId: string, fallbackName: string) => {
-    if (userId?.startsWith('ai-agent-')) {
-      const agentId = userId.replace('ai-agent-', '');
-      const agent = aiAgents.find(a => a.id === agentId);
-      if (agent?.name) return agent.name;
-    }
     if (user && user.id === userId) {
       return user.name || fallbackName;
     }
@@ -71,11 +59,6 @@ export const CommentSection: React.FC<CommentSectionProps> = ({ post }) => {
   };
 
   const getCommenterTitle = (userId: string, fallbackTitle?: string) => {
-    if (userId?.startsWith('ai-agent-')) {
-      const agentId = userId.replace('ai-agent-', '');
-      const agent = aiAgents.find(a => a.id === agentId);
-      if (agent?.role) return agent.role;
-    }
     if (user && user.id === userId) {
       return user.title || fallbackTitle;
     }
@@ -545,7 +528,6 @@ export const CommentSection: React.FC<CommentSectionProps> = ({ post }) => {
                   {repliesList.length > 0 && (
                     <div className="mt-4 pt-3 border-t border-[#F1F5F9] pl-3 sm:pl-6 border-l-2 border-l-[#BFDBFE] space-y-3">
                       {repliesList.map(reply => {
-                        const isAI = reply.isAIReply || reply.userId?.startsWith('ai-agent-');
                         const canDeleteReply = user?.id === reply.userId || isAdmin;
                         const replyAvatar = getCommenterAvatar(reply.userId, reply.userAvatar);
                         const replyName = getCommenterName(reply.userId, reply.userName);
@@ -554,11 +536,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({ post }) => {
                         return (
                           <div
                             key={reply.id}
-                            className={`p-3.5 rounded-xl border space-y-2 transition-all ${
-                              isAI
-                                ? 'bg-gradient-to-r from-blue-50/70 to-indigo-50/40 border-blue-200/80 shadow-xs'
-                                : 'bg-[#F8FAFC] border-[#E2E8F0]'
-                            }`}
+                            className="p-3.5 rounded-xl border space-y-2 transition-all bg-[#F8FAFC] border-[#E2E8F0]"
                           >
                             <div className="flex items-center justify-between gap-2">
                               <div className="flex items-center gap-2.5">
@@ -579,11 +557,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({ post }) => {
                                   <img
                                     src={replyAvatar}
                                     alt={replyName}
-                                    className={`w-7 h-7 rounded-full object-cover border transition-all ${
-                                      isAI
-                                        ? 'border-blue-400 ring-2 ring-blue-200 shadow-xs'
-                                        : 'border-[#CBD5E1] group-hover:ring-2 group-hover:ring-[#1D4ED8]'
-                                    }`}
+                                    className="w-7 h-7 rounded-full object-cover border transition-all border-[#CBD5E1] group-hover:ring-2 group-hover:ring-[#1D4ED8]"
                                     onError={e => {
                                       (e.target as HTMLImageElement).src = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(
                                         replyName
@@ -610,14 +584,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({ post }) => {
                                       <span>{replyName}</span>
                                     </button>
 
-                                    {isAI && (
-                                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-blue-600 text-white text-[9px] font-black tracking-wide uppercase shadow-xs">
-                                        <Bot className="w-2.5 h-2.5" />
-                                        <span>{reply.agentBadge || 'ESPECIALISTA IA'}</span>
-                                      </span>
-                                    )}
-
-                                    {!isAI && isCommenterAuthor(reply.userId, replyName) && (
+                                    {isCommenterAuthor(reply.userId, replyName) && (
                                       <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded-sm bg-[#EFF6FF] text-[#1D4ED8] text-[9px] font-bold">
                                         <Shield className="w-2.5 h-2.5" /> Autor
                                       </span>
