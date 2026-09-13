@@ -7,6 +7,7 @@ import {
   deleteDoc,
   writeBatch,
   onSnapshot,
+  getDoc,
   getDocs,
   query,
   where
@@ -96,6 +97,12 @@ interface NavigationOptions {
 }
 
 interface BlogContextType {
+  // Dispara um novo build do site no Netlify. É o que faz um artigo recém
+  // publicado existir como página estática (com meta tags e capa) para o
+  // LinkedIn e o Google — sem isso, o post só existe dentro do JavaScript.
+  triggerSiteRebuild: (reason?: string) => Promise<{ triggered: boolean; message: string }>;
+  // Horário do último disparo, para o painel mostrar. Null = nenhum nesta máquina.
+  lastRebuildAt: string | null;
   posts: Post[];
   isLoadingPosts: boolean;
   categories: CategoryInfo[];
@@ -219,6 +226,7 @@ const STORAGE_KEY_COMMENTS = 'aaa_comments_v2';
 const STORAGE_KEY_RATINGS = 'aaa_ratings_v2';
 const STORAGE_KEY_SUBS = 'aaa_newsletter_v2';
 const STORAGE_KEY_BRIEFINGS = 'aaa_briefings_v2';
+const STORAGE_KEY_LAST_REBUILD = 'aaa_last_rebuild_at';
 const STORAGE_KEY_CONTACTS = 'aaa_contacts_v2';
 const STORAGE_KEY_ADS = 'aaa_ads_config_v2';
 const STORAGE_KEY_RADAR = 'aaa_radar_config_v2';
@@ -533,6 +541,14 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   // Data States
+  const [lastRebuildAt, setLastRebuildAt] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem(STORAGE_KEY_LAST_REBUILD);
+    } catch {
+      return null;
+    }
+  });
+
   const [posts, setPosts] = useState<Post[]>(() => {
     const raw = safeGetJSON<Post[]>(STORAGE_KEY_POSTS, []);
     return Array.isArray(raw)
@@ -1485,6 +1501,78 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  // ---------------------------------------------------------------------------
+  // REGERAÇÃO DO SITE
+  //
+  // As páginas estáticas dos artigos (com título, canonical, JSON-LD e capa)
+  // são geradas por scripts/generate-ssg.js, que só roda durante o build do
+  // Netlify. Publicar um artigo grava no Firestore e não toca no build — por
+  // isso, até aqui, todo post novo ficava invisível para LinkedIn e Google
+  // até alguém dar push no repositório.
+  //
+  // Esta função fecha esse buraco: ao publicar, dispara um build novo.
+  //
+  // A URL do build hook é uma credencial e NÃO pode morar no código: este
+  // painel roda no navegador, então qualquer segredo no fonte iria junto no
+  // bundle público. Ela fica em admin_config/netlify, que as regras do
+  // Firestore liberam só para o admin autenticado.
+  // ---------------------------------------------------------------------------
+  const triggerSiteRebuild = async (
+    reason = 'publicação'
+  ): Promise<{ triggered: boolean; message: string }> => {
+    let hookUrl = '';
+    try {
+      const snap = await getDoc(doc(db, 'admin_config', 'netlify'));
+      hookUrl = snap.exists() ? String(snap.data()?.buildHookUrl || '').trim() : '';
+    } catch (err) {
+      console.error('[rebuild] Não foi possível ler admin_config/netlify:', err);
+      return {
+        triggered: false,
+        message: 'Não consegui ler a configuração de publicação. Verifique se está logado como admin.'
+      };
+    }
+
+    if (!hookUrl.startsWith('https://api.netlify.com/build_hooks/')) {
+      return {
+        triggered: false,
+        message: 'Build hook não configurado. O artigo foi salvo, mas o site não será regerado.'
+      };
+    }
+
+    try {
+      // O Netlify não envia cabeçalhos CORS neste endpoint, então a resposta
+      // vem opaca: a requisição chega e o build começa, mas o navegador não
+      // deixa ler status nem corpo. Ou seja, NÃO dá para afirmar aqui que o
+      // build foi aceito — por isso a mensagem abaixo não promete sucesso, e
+      // o painel oferece o link dos Deploys para conferência real.
+      await fetch(hookUrl, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ trigger_title: `Publicação pelo painel (${reason})` })
+      });
+
+      const now = new Date().toISOString();
+      setLastRebuildAt(now);
+      try {
+        localStorage.setItem(STORAGE_KEY_LAST_REBUILD, now);
+      } catch {
+        /* modo privado do navegador: só perde o histórico local, o build já foi */
+      }
+
+      return {
+        triggered: true,
+        message: 'Regeração do site solicitada. Leva cerca de 2 minutos até o artigo aparecer para o LinkedIn e o Google.'
+      };
+    } catch (err) {
+      console.error('[rebuild] Falha ao chamar o build hook:', err);
+      return {
+        triggered: false,
+        message: 'Não consegui solicitar a regeração do site. O artigo está salvo; tente publicar novamente ou rode um deploy manual no Netlify.'
+      };
+    }
+  };
+
   const createPost = async (newPostData: Omit<Post, 'id' | 'viewsCount' | 'likesCount'>): Promise<string> => {
     const id = `post-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     const slug =
@@ -1557,6 +1645,11 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
       throw e;
     }
 
+    // Só artigos publicados viram página estática. Rascunho não precisa de build.
+    if (cleanPost.published) {
+      await triggerSiteRebuild(`novo artigo: ${cleanPost.title}`);
+    }
+
     return id;
   };
 
@@ -1621,6 +1714,14 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (e) {
       console.error('Firestore updatePost error:', e);
       throw e;
+    }
+
+    // Regera quando o artigo está publicado agora OU estava antes: despublicar
+    // também exige build novo, senão a página estática antiga continua no ar.
+    const wasPublished = posts.find(p => p.id === id)?.published === true;
+    const isPublished = cleanUpdates.published !== undefined ? cleanUpdates.published : wasPublished;
+    if (isPublished || wasPublished) {
+      await triggerSiteRebuild(`edição: ${cleanUpdates.title || id}`);
     }
   };
 
@@ -1691,6 +1792,9 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (selectedPostSlug && activePost?.id === id) {
       navigate('blog');
     }
+
+    // Sem build novo, a página estática do artigo apagado continuaria acessível.
+    await triggerSiteRebuild('artigo removido');
   };
 
   const togglePublishPost = async (id: string) => {
@@ -1700,10 +1804,20 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     setPosts(prev => prev.map(p => (p.id === id ? { ...p, published: newStatus } : p)));
 
+    let saved = false;
     try {
       await updateDoc(doc(db, 'posts', id), { published: newStatus });
+      saved = true;
     } catch (e) {
       console.warn('Firestore togglePublishPost note:', e);
+    }
+
+    // Publicar e despublicar exigem build novo: um cria a página estática,
+    // o outro precisa removê-la do ar.
+    if (saved) {
+      await triggerSiteRebuild(
+        `${newStatus ? 'publicado' : 'despublicado'}: ${target.title}`
+      );
     }
   };
 
@@ -3176,6 +3290,8 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
         theme,
         fontSize,
         bookmarks,
+        triggerSiteRebuild,
+        lastRebuildAt,
         navigate,
         setSearchQuery,
         setSortOption,

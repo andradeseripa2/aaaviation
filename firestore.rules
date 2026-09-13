@@ -146,6 +146,15 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
+    // Guarda credenciais operacionais (ex: a URL do build hook do Netlify,
+    // que dispara publicações). Precisa ficar fora do código do site: o painel
+    // admin roda no navegador, então qualquer segredo escrito no fonte iria
+    // junto no bundle JavaScript, à vista de qualquer visitante.
+    // Aqui, só o admin autenticado consegue ler.
+    match /admin_config/{configId} {
+      allow read, write: if isAdmin();
+    }
+
     // Qualquer coleção não listada acima fica negada por padrão.
   }
 }

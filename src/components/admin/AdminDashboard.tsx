@@ -92,7 +92,8 @@ export const AdminDashboard: React.FC = () => {
     aiModerationConfig,
     generateAIReplyForComment,
     approveSuggestedAIReply,
-    dismissSuggestedAIReply
+    dismissSuggestedAIReply,
+    lastRebuildAt
   } = useBlog();
 
   const [activeTab, setActiveTab] = useState<'posts' | 'new-post' | 'drafts' | 'lead-material' | 'ai-agents' | 'briefing' | 'radar' | 'about' | 'contact' | 'comments' | 'users' | 'categories' | 'ads' | 'messages'>('posts');
@@ -606,6 +607,37 @@ export const AdminDashboard: React.FC = () => {
               <span>Novo Artigo</span>
             </button>
           </div>
+        </div>
+
+        {/*
+          Status da publicação no site.
+          As páginas que o LinkedIn e o Google enxergam são geradas no build do
+          Netlify, não na hora em que o artigo é salvo. Publicar dispara esse
+          build automaticamente — mas o navegador não consegue ler a resposta do
+          Netlify (domínio externo, sem CORS), então aqui NÃO se afirma que deu
+          certo: mostra-se a hora do pedido e um link para conferir o build real.
+        */}
+        <div className="mt-6 pt-6 border-t border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <p className="text-[11px] text-slate-400 font-mono">
+            {lastRebuildAt ? (
+              <>
+                Última regeração do site solicitada em{' '}
+                <span className="text-slate-200">
+                  {new Date(lastRebuildAt).toLocaleString('pt-BR')}
+                </span>
+              </>
+            ) : (
+              'Nenhuma regeração do site solicitada a partir deste navegador.'
+            )}
+          </p>
+          <a
+            href="https://app.netlify.com/projects/aaaviation/deploys"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[11px] font-semibold text-[#93C5FD] hover:text-white underline underline-offset-2 shrink-0"
+          >
+            Conferir os builds no Netlify →
+          </a>
         </div>
 
         {/* Quick Stats Grid */}
