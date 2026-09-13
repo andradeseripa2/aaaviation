@@ -32,9 +32,6 @@ import {
   FontSizeScale,
   User,
   UserNotification,
-  AIAgentPersona,
-  AIModerationConfig,
-  SuggestedAIReply,
   LeadMaterialConfig,
   LeadCapture
 } from '../types';
@@ -47,10 +44,6 @@ import {
 } from '../data/seedData';
 import { INITIAL_LEAD_MATERIAL_CONFIG } from '../types';
 import { isPostPublishedAndActive } from '../lib/scheduleUtils';
-import {
-  DEFAULT_AI_AGENTS,
-  INITIAL_AI_MODERATION_CONFIG
-} from '../data/aiAgentsData';
 import { useAuth } from './AuthContext';
 import { generateBriefingHtml } from '../lib/emailTemplate';
 import {
@@ -204,18 +197,6 @@ interface BlogContextType {
   markAllNotificationsAsRead: () => Promise<void>;
   deleteNotification: (id: string) => Promise<void>;
   checkAndUnlockBadges: () => Promise<void>;
-
-  // AI Moderation & Expert Personas
-  aiAgents: AIAgentPersona[];
-  aiModerationConfig: AIModerationConfig;
-  updateAIModerationConfig: (updates: Partial<AIModerationConfig>) => Promise<void>;
-  saveAIAgent: (agent: AIAgentPersona) => Promise<void>;
-  deleteAIAgent: (agentId: string) => Promise<void>;
-  resetAIAgentsToDefault: () => Promise<void>;
-  generateAIReplyForComment: (commentId: string, specificAgentId?: string) => Promise<{ success: boolean; replyText?: string; agent?: AIAgentPersona; error?: string }>;
-  approveSuggestedAIReply: (commentId: string) => Promise<void>;
-  dismissSuggestedAIReply: (commentId: string) => Promise<void>;
-  testGenerateAIReply: (commentText: string, targetAgentId?: string, postTitle?: string, postCategory?: string, postContent?: string) => Promise<{ success: boolean; replyText?: string; agent?: AIAgentPersona; error?: string }>;
 }
 
 const BlogContext = createContext<BlogContextType | undefined>(undefined);
@@ -232,8 +213,6 @@ const STORAGE_KEY_ADS = 'aaa_ads_config_v2';
 const STORAGE_KEY_RADAR = 'aaa_radar_config_v2';
 const STORAGE_KEY_ABOUT = 'aaa_about_page_data_v2';
 const STORAGE_KEY_CONTACT_INFO = 'aaa_contact_info_v2';
-const STORAGE_KEY_AI_AGENTS = 'aaa_ai_agents_v2';
-const STORAGE_KEY_AI_CONFIG = 'aaa_ai_moderation_config_v2';
 const STORAGE_KEY_LIKES = 'aaa_liked_posts_v2';
 const STORAGE_KEY_COMMENT_LIKES = 'aaa_liked_comments_v2';
 const STORAGE_KEY_BOOKMARKS = 'aaa_bookmarks_v2';
@@ -641,14 +620,6 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return safeGetJSON<LeadCapture[]>(STORAGE_KEY_CAPTURED_LEADS, []);
   });
 
-  const [aiAgents, setAiAgents] = useState<AIAgentPersona[]>(() => {
-    return safeGetJSON<AIAgentPersona[]>(STORAGE_KEY_AI_AGENTS, DEFAULT_AI_AGENTS);
-  });
-
-  const [aiModerationConfig, setAiModerationConfig] = useState<AIModerationConfig>(() => {
-    return safeGetJSON<AIModerationConfig>(STORAGE_KEY_AI_CONFIG, INITIAL_AI_MODERATION_CONFIG);
-  });
-
   // 1. Sync Posts from Firestore (with automatic purge of legacy mock posts)
   useEffect(() => {
     try {
@@ -1022,32 +993,6 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => clearInterval(interval);
   }, [posts, briefingCampaigns, newsletterSubscribers]);
 
-  // 5b. Delayed AI Auto-Reply Processor (2min queue)
-  useEffect(() => {
-    if (!aiModerationConfig.enabled || aiModerationConfig.autoReplyMode !== 'auto_delay_2min') {
-      return;
-    }
-
-    const processScheduledAIReplies = async () => {
-      const now = new Date().toISOString();
-      const scheduledComments = comments.filter(
-        c => c.aiAutoReplyScheduledAt && c.aiAutoReplyScheduledAt <= now && (!c.replies || !c.replies.some(r => r.isAIReply))
-      );
-
-      for (const comm of scheduledComments) {
-        try {
-          await generateAIReplyForComment(comm.id);
-        } catch (e) {
-          console.warn('Delayed AI reply error for comment:', comm.id, e);
-        }
-      }
-    };
-
-    const interval = setInterval(processScheduledAIReplies, 15000);
-    processScheduledAIReplies();
-    return () => clearInterval(interval);
-  }, [comments, aiModerationConfig, aiAgents]);
-
   // 5c. Sync In-App Notifications for Current User
   const [notifications, setNotifications] = useState<UserNotification[]>([]);
 
@@ -1216,97 +1161,6 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return () => unsub();
     } catch (e) {
       console.warn('Contact info listener error:', e);
-    }
-  }, []);
-
-  // 7.6. Sync AI Moderation Config & Personas from Firestore and Server Disk Backup
-  useEffect(() => {
-    // Secondary Server Disk Sync (prevents data loss if localStorage is cleared or on new devices)
-    fetch('/api/settings/ai-agents')
-      .then(res => res.json())
-      .then(data => {
-        if (data?.success && Array.isArray(data.list) && data.list.length > 0) {
-          setAiAgents(prev => {
-            const isPrevDefault = JSON.stringify(prev) === JSON.stringify(DEFAULT_AI_AGENTS);
-            if (isPrevDefault && data.list.length > 0) {
-              safeSetJSON(STORAGE_KEY_AI_AGENTS, data.list);
-              return data.list;
-            }
-            return prev;
-          });
-        }
-      })
-      .catch(() => {});
-
-    fetch('/api/settings/ai-config')
-      .then(res => res.json())
-      .then(data => {
-        if (data?.success && data.config) {
-          setAiModerationConfig(prev => {
-            if (!prev || JSON.stringify(prev) === JSON.stringify(INITIAL_AI_MODERATION_CONFIG)) {
-              safeSetJSON(STORAGE_KEY_AI_CONFIG, data.config);
-              return data.config;
-            }
-            return prev;
-          });
-        }
-      })
-      .catch(() => {});
-
-    try {
-      const unsubConfig = onSnapshot(
-        doc(db, 'settings', 'ai_moderation_config'),
-        docSnap => {
-          if (docSnap.exists()) {
-            const data = docSnap.data() as AIModerationConfig;
-            if (data && typeof data.enabled === 'boolean') {
-              setAiModerationConfig(data);
-              safeSetJSON(STORAGE_KEY_AI_CONFIG, data);
-              // Also backup to disk
-              fetch('/api/settings/ai-config', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data)
-              }).catch(() => {});
-            }
-          } else {
-            const currentSavedConfig = safeGetJSON<AIModerationConfig>(STORAGE_KEY_AI_CONFIG, INITIAL_AI_MODERATION_CONFIG);
-            setDoc(doc(db, 'settings', 'ai_moderation_config'), currentSavedConfig).catch(() => {});
-          }
-        },
-        err => console.warn('AI moderation config listener note:', err)
-      );
-
-      const unsubAgents = onSnapshot(
-        doc(db, 'settings', 'ai_agents'),
-        docSnap => {
-          if (docSnap.exists()) {
-            const data = docSnap.data();
-            if (data && Array.isArray(data.list) && data.list.length > 0) {
-              setAiAgents(data.list);
-              safeSetJSON(STORAGE_KEY_AI_AGENTS, data.list);
-              // Also backup to disk
-              fetch('/api/settings/ai-agents', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ list: data.list })
-              }).catch(() => {});
-            }
-          } else {
-            // Seed Firestore with the user's current saved agents instead of resetting to defaults!
-            const currentSavedAgents = safeGetJSON<AIAgentPersona[]>(STORAGE_KEY_AI_AGENTS, DEFAULT_AI_AGENTS);
-            setDoc(doc(db, 'settings', 'ai_agents'), { list: currentSavedAgents }).catch(() => {});
-          }
-        },
-        err => console.warn('AI agents listener note:', err)
-      );
-
-      return () => {
-        unsubConfig();
-        unsubAgents();
-      };
-    } catch (e) {
-      console.warn('AI config/agents listener error:', e);
     }
   }, []);
 
@@ -1929,11 +1783,6 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const canonicalPostId = targetPost?.id || postId;
     const postTitle = targetPost?.title || 'Artigo';
 
-    const willAutoReplyWithDelay = aiModerationConfig.enabled && aiModerationConfig.autoReplyMode === 'auto_delay_2min';
-    const scheduledTime = willAutoReplyWithDelay
-      ? new Date(Date.now() + (aiModerationConfig.delayMinutes || 2) * 60000).toISOString()
-      : undefined;
-
     const newComment: Comment = {
       id: `comment-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       postId: canonicalPostId,
@@ -1946,8 +1795,7 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
       createdAt: new Date().toISOString(),
       status: 'approved',
       likes: 0,
-      replies: [],
-      aiAutoReplyScheduledAt: scheduledTime
+      replies: []
     };
 
     setComments(prev => {
@@ -1965,26 +1813,23 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return list;
     });
 
+    // O Firestore recusa qualquer campo undefined e lança antes mesmo de enviar.
+    // Até aqui o comentário carregava `aiAutoReplyScheduledAt: undefined` (vindo
+    // da resposta automática por IA, removida) e `userTitle` pode vir undefined
+    // para alguns usuários — então TODO comentário era recusado, e o erro era
+    // engolido com success: true. Resultado: a coleção `comments` nunca recebeu
+    // um documento. A sanitização remove os campos vazios antes de gravar.
     try {
-      await setDoc(doc(db, 'comments', newComment.id), newComment);
-
-      // If instant reply is enabled, trigger immediately in background
-      if (aiModerationConfig.enabled && aiModerationConfig.autoReplyMode === 'auto_instant') {
-        setTimeout(() => {
-          generateAIReplyForComment(newComment.id).catch(err => {
-            console.warn('Auto instant AI reply note:', err);
-          });
-        }, 1500);
-      } else if (aiModerationConfig.enabled && aiModerationConfig.autoReplyMode === 'manual_approval') {
-        // Generate suggestion in background for admin review
-        setTimeout(() => {
-          generateAIReplyForComment(newComment.id).catch(err => {
-            console.warn('AI suggestion generation note:', err);
-          });
-        }, 800);
-      }
+      await setDoc(doc(db, 'comments', newComment.id), sanitizeForFirestore(newComment));
     } catch (e) {
-      console.warn('Firestore addComment note:', e);
+      console.error('Firestore addComment error:', e);
+      // Desfaz o comentário otimista: ele não foi salvo e sumiria ao recarregar.
+      setComments(prev => {
+        const list = prev.filter(c => c.id !== newComment.id);
+        safeSetJSON(STORAGE_KEY_COMMENTS, list);
+        return list;
+      });
+      return { success: false, error: 'Não foi possível publicar seu comentário. Tente novamente.' };
     }
 
     return { success: true };
@@ -2031,7 +1876,9 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     try {
       if (updatedComment) {
-        await setDoc(doc(db, 'comments', commentId), updatedComment, { merge: true });
+        // Mesmo defeito do addComment: `userTitle` pode vir undefined (ex: login
+        // pelo Google), e o Firestore recusa o documento inteiro por isso.
+        await setDoc(doc(db, 'comments', commentId), sanitizeForFirestore(updatedComment), { merge: true });
 
         // Notify parent comment author if it's someone else
         const parentComment = comments.find(c => c.id === commentId);
@@ -2077,7 +1924,7 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     try {
       if (updatedComment) {
-        await setDoc(doc(db, 'comments', commentId), updatedComment, { merge: true });
+        await setDoc(doc(db, 'comments', commentId), sanitizeForFirestore(updatedComment), { merge: true });
       }
     } catch (e) {
       console.warn('Firestore deleteCommentReply note:', e);
@@ -2130,7 +1977,7 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     try {
       if (updatedComment) {
-        await setDoc(doc(db, 'comments', commentId), updatedComment, { merge: true });
+        await setDoc(doc(db, 'comments', commentId), sanitizeForFirestore(updatedComment), { merge: true });
       }
     } catch (e) {
       console.warn('Firestore likeCommentReply note:', e);
@@ -2218,415 +2065,6 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await updateDoc(doc(db, 'comments', commentId), { likes: updatedLikes });
     } catch (e) {
       console.warn('Firestore likeComment note:', e);
-    }
-  };
-
-  // AI Moderation & Personas Methods
-  const updateAIModerationConfig = async (updates: Partial<AIModerationConfig>) => {
-    const next: AIModerationConfig = { ...aiModerationConfig, ...updates, updatedAt: new Date().toISOString() };
-    setAiModerationConfig(next);
-    safeSetJSON(STORAGE_KEY_AI_CONFIG, next);
-    // Sync to disk
-    fetch('/api/settings/ai-config', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(next)
-    }).catch(() => {});
-    try {
-      await setDoc(doc(db, 'settings', 'ai_moderation_config'), next, { merge: true });
-    } catch (e) {
-      console.warn('Firestore updateAIModerationConfig note:', e);
-    }
-  };
-
-  const saveAIAgent = async (agent: AIAgentPersona) => {
-    let updated: AIAgentPersona[] = [];
-    const exists = aiAgents.some(a => a.id === agent.id);
-    if (exists) {
-      updated = aiAgents.map(a => (a.id === agent.id ? agent : a));
-    } else {
-      updated = [...aiAgents, agent];
-    }
-    setAiAgents(updated);
-    safeSetJSON(STORAGE_KEY_AI_AGENTS, updated);
-
-    // Sync to disk permanently
-    fetch('/api/settings/ai-agents', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ list: updated })
-    }).catch(() => {});
-
-    try {
-      await setDoc(doc(db, 'settings', 'ai_agents'), { list: updated });
-    } catch (e) {
-      console.warn('Firestore saveAIAgent note:', e);
-    }
-
-    // Synchronize past comments/replies authored by this agent
-    try {
-      let modifiedAnyComment = false;
-      const syncedComments = comments.map(c => {
-        let changed = false;
-        const newReplies = c.replies?.map(r => {
-          const isThisAgent = r.userId === `ai-agent-${agent.id}` || r.agentId === agent.id;
-          if (isThisAgent) {
-            if (r.userName !== agent.name || r.userAvatar !== agent.avatar || r.userTitle !== agent.role || r.agentBadge !== agent.badge) {
-              changed = true;
-              return {
-                ...r,
-                userName: agent.name,
-                userAvatar: agent.avatar,
-                userTitle: agent.role,
-                agentBadge: agent.badge
-              };
-            }
-          }
-          return r;
-        });
-
-        if (changed) {
-          modifiedAnyComment = true;
-          // Update in Firestore async
-          updateDoc(doc(db, 'comments', c.id), { replies: newReplies }).catch(() => {});
-          return { ...c, replies: newReplies };
-        }
-        return c;
-      });
-
-      if (modifiedAnyComment) {
-        setComments(syncedComments);
-        safeSetJSON(STORAGE_KEY_COMMENTS, syncedComments);
-      }
-    } catch (err) {
-      console.warn('Comment persona sync note:', err);
-    }
-  };
-
-  const deleteAIAgent = async (agentId: string) => {
-    const updated = aiAgents.filter(a => a.id !== agentId);
-    setAiAgents(updated);
-    safeSetJSON(STORAGE_KEY_AI_AGENTS, updated);
-
-    // Sync to disk
-    fetch('/api/settings/ai-agents', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ list: updated })
-    }).catch(() => {});
-
-    try {
-      await setDoc(doc(db, 'settings', 'ai_agents'), { list: updated });
-    } catch (e) {
-      console.warn('Firestore deleteAIAgent note:', e);
-    }
-  };
-
-  const resetAIAgentsToDefault = async () => {
-    setAiAgents(DEFAULT_AI_AGENTS);
-    safeSetJSON(STORAGE_KEY_AI_AGENTS, DEFAULT_AI_AGENTS);
-    setAiModerationConfig(INITIAL_AI_MODERATION_CONFIG);
-    safeSetJSON(STORAGE_KEY_AI_CONFIG, INITIAL_AI_MODERATION_CONFIG);
-
-    fetch('/api/settings/ai-agents', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ list: DEFAULT_AI_AGENTS })
-    }).catch(() => {});
-
-    fetch('/api/settings/ai-config', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(INITIAL_AI_MODERATION_CONFIG)
-    }).catch(() => {});
-
-    try {
-      await setDoc(doc(db, 'settings', 'ai_agents'), { list: DEFAULT_AI_AGENTS });
-      await setDoc(doc(db, 'settings', 'ai_moderation_config'), INITIAL_AI_MODERATION_CONFIG);
-    } catch (e) {
-      console.warn('Firestore resetAIAgentsToDefault note:', e);
-    }
-  };
-
-  const generateAIReplyForComment = async (
-    commentId: string,
-    specificAgentId?: string
-  ): Promise<{ success: boolean; replyText?: string; agent?: AIAgentPersona; error?: string }> => {
-    const targetComment = comments.find(c => c.id === commentId);
-    if (!targetComment) {
-      return { success: false, error: 'Comentário não encontrado.' };
-    }
-
-    const targetPost = posts.find(p => p.id === targetComment.postId || p.slug === targetComment.postId);
-    const chosenFallbackAgent = aiAgents.find(a => a.id === specificAgentId) || aiAgents[0] || DEFAULT_AI_AGENTS[0];
-
-    try {
-      let data: any = null;
-      try {
-        const res = await fetch('/api/ai/comments/respond', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            commentText: targetComment.content,
-            commentAuthor: targetComment.userName,
-            postTitle: targetPost?.title || targetComment.postTitle || 'Artigo de Aviação',
-            postCategory: targetPost?.category || 'Geral',
-            postExcerpt: targetPost?.excerpt || '',
-            postContent: targetPost?.content || '',
-            agents: aiAgents,
-            targetAgentId: specificAgentId,
-            smartRoute: !specificAgentId && aiModerationConfig.smartRoutingEnabled
-          })
-        });
-
-        const contentType = res.headers.get('content-type') || '';
-        if (contentType.includes('application/json')) {
-          data = await res.json().catch(() => null);
-        }
-      } catch (networkErr) {
-        console.warn('Backend /api route not reachable, using client-side fallback engine:', networkErr);
-      }
-
-      const selectedAgent: AIAgentPersona = (data && data.selectedAgent) ? data.selectedAgent : chosenFallbackAgent;
-      const replyText = (data && data.replyText)
-        ? data.replyText
-        : `Prezado(a) ${targetComment.userName || 'Colega'},\n\nExcelente observação referente ao artigo "${targetPost?.title || targetComment.postTitle || 'técnico'}". A discussão sobre as boas práticas e conformidade na aviação fortalece a segurança de voo e a qualidade técnica dos serviços de hangar.\n\nObrigado por enriquecer o debate com sua participação!`;
-      const reasoning = data?.reasoning || `Resposta gerada por ${selectedAgent.name}`;
-
-      // If auto-reply mode is active (instant or delayed 2min auto), publish directly
-      if (aiModerationConfig.autoReplyMode === 'auto_delay_2min' || aiModerationConfig.autoReplyMode === 'auto_instant') {
-        const newReply: CommentReply = {
-          id: `reply-ai-${Date.now()}`,
-          commentId,
-          userId: `ai-agent-${selectedAgent.id}`,
-          userName: selectedAgent.name,
-          userAvatar: selectedAgent.avatar,
-          userTitle: selectedAgent.role,
-          content: replyText,
-          createdAt: new Date().toISOString(),
-          likes: 0,
-          isAIReply: true,
-          agentId: selectedAgent.id,
-          agentBadge: selectedAgent.badge
-        };
-
-        setComments(prev => {
-          const next = prev.map(c => {
-            if (c.id === commentId) {
-              const currentReplies = Array.isArray(c.replies) ? c.replies : [];
-              return {
-                ...c,
-                aiAutoReplyScheduledAt: undefined,
-                suggestedAIReply: undefined,
-                replies: [...currentReplies, newReply]
-              };
-            }
-            return c;
-          });
-          safeSetJSON(STORAGE_KEY_COMMENTS, next);
-          return next;
-        });
-
-        const commentRef = doc(db, 'comments', commentId);
-        const currentComment = comments.find(c => c.id === commentId);
-        const updatedReplies = [...(currentComment?.replies || []), newReply];
-        await updateDoc(commentRef, {
-          replies: updatedReplies,
-          aiAutoReplyScheduledAt: null,
-          suggestedAIReply: null
-        });
-
-        // Notify comment author
-        if (targetComment.userId && targetComment.userId !== user?.id) {
-          const notifId = `notif-${Date.now()}`;
-          await setDoc(doc(db, 'notifications', notifId), {
-            id: notifId,
-            userId: targetComment.userId,
-            type: 'comment_reply',
-            title: `Resposta de ${selectedAgent.name} 🤖`,
-            message: `${selectedAgent.name} (${selectedAgent.badge}) respondeu seu comentário no artigo "${targetPost?.title || targetComment.postTitle}".`,
-            linkUrl: targetPost?.slug ? `/post/${targetPost.slug}` : undefined,
-            read: false,
-            createdAt: new Date().toISOString()
-          });
-        }
-      } else {
-        // In manual approval mode, store as suggestedAIReply for admin dashboard
-        const suggested: SuggestedAIReply = {
-          id: `sugg-${Date.now()}`,
-          commentId,
-          agentId: selectedAgent.id,
-          agentName: selectedAgent.name,
-          agentAvatar: selectedAgent.avatar,
-          agentBadge: selectedAgent.badge,
-          agentRole: selectedAgent.role,
-          text: replyText,
-          reasoning,
-          generatedAt: new Date().toISOString(),
-          status: 'pending'
-        };
-
-        setComments(prev => {
-          const next = prev.map(c => (c.id === commentId ? { ...c, suggestedAIReply: suggested } : c));
-          safeSetJSON(STORAGE_KEY_COMMENTS, next);
-          return next;
-        });
-
-        await updateDoc(doc(db, 'comments', commentId), {
-          suggestedAIReply: suggested
-        });
-      }
-
-      return { success: true, replyText, agent: selectedAgent };
-    } catch (err: any) {
-      console.warn('generateAIReplyForComment error:', err);
-      return { success: false, error: err?.message || 'Erro ao gerar resposta com IA.' };
-    }
-  };
-
-  const approveSuggestedAIReply = async (commentId: string) => {
-    const targetComment = comments.find(c => c.id === commentId);
-    if (!targetComment || !targetComment.suggestedAIReply) return;
-
-    const suggested = targetComment.suggestedAIReply;
-    const newReply: CommentReply = {
-      id: `reply-ai-${Date.now()}`,
-      commentId,
-      userId: `ai-agent-${suggested.agentId}`,
-      userName: suggested.agentName,
-      userAvatar: suggested.agentAvatar,
-      userTitle: suggested.agentRole,
-      content: suggested.text,
-      createdAt: new Date().toISOString(),
-      likes: 0,
-      isAIReply: true,
-      agentId: suggested.agentId,
-      agentBadge: suggested.agentBadge
-    };
-
-    const targetPost = posts.find(p => p.id === targetComment.postId || p.slug === targetComment.postId);
-
-    setComments(prev => {
-      const next = prev.map(c => {
-        if (c.id === commentId) {
-          const currentReplies = Array.isArray(c.replies) ? c.replies : [];
-          return {
-            ...c,
-            suggestedAIReply: undefined,
-            replies: [...currentReplies, newReply]
-          };
-        }
-        return c;
-      });
-      safeSetJSON(STORAGE_KEY_COMMENTS, next);
-      return next;
-    });
-
-    try {
-      const commentRef = doc(db, 'comments', commentId);
-      const updatedReplies = [...(targetComment.replies || []), newReply];
-      await updateDoc(commentRef, {
-        replies: updatedReplies,
-        suggestedAIReply: null
-      });
-
-      if (targetComment.userId) {
-        const notifId = `notif-${Date.now()}`;
-        await setDoc(doc(db, 'notifications', notifId), {
-          id: notifId,
-          userId: targetComment.userId,
-          type: 'comment_reply',
-          title: `Resposta de ${suggested.agentName} 🤖`,
-          message: `${suggested.agentName} (${suggested.agentBadge}) respondeu ao seu comentário.`,
-          linkUrl: targetPost?.slug ? `/post/${targetPost.slug}` : undefined,
-          read: false,
-          createdAt: new Date().toISOString()
-        });
-      }
-    } catch (e) {
-      console.warn('Firestore approveSuggestedAIReply note:', e);
-    }
-  };
-
-  const dismissSuggestedAIReply = async (commentId: string) => {
-    setComments(prev => {
-      const next = prev.map(c => (c.id === commentId ? { ...c, suggestedAIReply: undefined } : c));
-      safeSetJSON(STORAGE_KEY_COMMENTS, next);
-      return next;
-    });
-
-    try {
-      await updateDoc(doc(db, 'comments', commentId), {
-        suggestedAIReply: null
-      });
-    } catch (e) {
-      console.warn('Firestore dismissSuggestedAIReply note:', e);
-    }
-  };
-
-  const testGenerateAIReply = async (
-    commentText: string,
-    targetAgentId?: string,
-    postTitle?: string,
-    postCategory?: string,
-    postContent?: string
-  ): Promise<{ success: boolean; replyText?: string; agent?: AIAgentPersona; error?: string }> => {
-    const chosenFallbackAgent = aiAgents.find(a => a.id === targetAgentId) || aiAgents[0] || DEFAULT_AI_AGENTS[0];
-    const articleTitle = postTitle || 'Inspeção Boroscópica e Fadiga em Motores Aeronáuticos';
-    const articleCategory = postCategory || 'Manutenção';
-
-    try {
-      let data: any = null;
-      try {
-        const res = await fetch('/api/ai/comments/respond', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            commentText,
-            commentAuthor: 'Leitor em Dúvida',
-            postTitle: articleTitle,
-            postCategory: articleCategory,
-            postContent: postContent || '',
-            agents: aiAgents,
-            targetAgentId,
-            smartRoute: !targetAgentId && aiModerationConfig.smartRoutingEnabled
-          })
-        });
-
-        const contentType = res.headers.get('content-type') || '';
-        if (contentType.includes('application/json')) {
-          data = await res.json().catch(() => null);
-        }
-      } catch (fetchErr) {
-        console.warn('Fetch /api/ai/comments/respond note:', fetchErr);
-      }
-
-      if (data && data.success && data.replyText) {
-        return {
-          success: true,
-          replyText: data.replyText,
-          agent: data.selectedAgent || chosenFallbackAgent
-        };
-      }
-
-      // Safe contextual fallback (for static hosting or offline environments)
-      const contextualReplies: Record<string, string> = {
-        'inspetor-brandao': `Prezado Colega,\n\nExcelente colocação a respeito do artigo "${articleTitle}". Do ponto de vista de conformidade e aeronavegabilidade continuada (conforme os RBACs pertinentes), o cumprimento dos manuais de manutenção (AMM) e o registro fidedigno de cada intervenção são as bases que garantem a segurança operacional e a liberação de voo.\n\nSua pergunta destaca um aspecto crítico do tema tratado no artigo.`,
-        'mestre-valter': `Fala, colega de hangar!\n\nMuito bem observado em relação a "${articleTitle}"! No dia a dia da oficina, a prática confirma o que está exposto no artigo: atenção redobrada no torque das ferramentas, limpeza para evitar F.O.D. e inspeção visual minuciosa evitam retrabalho e salvam vidas.\n\nValeu pela contribuição aqui no debate!`,
-        'eng-marcos': `Olá leitor(a)!\n\nMuito pertinente o seu questionamento. Analisando a engenharia de sistemas abordada em "${articleTitle}", os barramentos digitais e a redundância dos sensores aviônicos foram projetados justamente para absorver transientes e manter a confiabilidade operacional descrita na publicação.\n\nÓtimo ponto levantado!`,
-        'cmte-helena': `Saudações, colega.\n\nSua dúvida vai direto ao ponto central tratado no artigo "${articleTitle}". A coordenação de cabine, a comunicação assertiva (CRM) e a tomada de decisão estruturada são as ferramentas mais poderosas para transformar os dados técnicos do artigo em segurança prática de voo.\n\nExcelente reflexão técnica!`
-      };
-
-      const selected = chosenFallbackAgent;
-      const fallbackText = contextualReplies[selected.id] || contextualReplies['inspetor-brandao'];
-
-      return {
-        success: true,
-        replyText: fallbackText,
-        agent: selected
-      };
-    } catch (err: any) {
-      return { success: false, error: err?.message || 'Erro ao processar resposta com IA.' };
     }
   };
 
@@ -3357,17 +2795,7 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
         markNotificationAsRead,
         markAllNotificationsAsRead,
         deleteNotification,
-        checkAndUnlockBadges,
-        aiAgents,
-        aiModerationConfig,
-        updateAIModerationConfig,
-        saveAIAgent,
-        deleteAIAgent,
-        resetAIAgentsToDefault,
-        generateAIReplyForComment,
-        approveSuggestedAIReply,
-        dismissSuggestedAIReply,
-        testGenerateAIReply
+        checkAndUnlockBadges
       }}
     >
       {children}

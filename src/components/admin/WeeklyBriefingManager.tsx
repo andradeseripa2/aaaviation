@@ -75,7 +75,6 @@ export const WeeklyBriefingManager: React.FC = () => {
   const [testEmail, setTestEmail] = useState(user?.email || 'andradeseripa2@gmail.com');
   const [isSendingTest, setIsSendingTest] = useState(false);
   const [isSendingMass, setIsSendingMass] = useState(false);
-  const [isGeneratingAi, setIsGeneratingAi] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
 
@@ -85,13 +84,13 @@ export const WeeklyBriefingManager: React.FC = () => {
   const [isAddingSub, setIsAddingSub] = useState(false);
 
   // Server health status (checks if RESEND_API_KEY is configured)
-  const [serverStatus, setServerStatus] = useState<{ resendConfigured: boolean; geminiConfigured: boolean } | null>(null);
+  const [serverStatus, setServerStatus] = useState<{ resendConfigured: boolean } | null>(null);
 
   useEffect(() => {
     fetch('/api/health')
       .then(res => res.json())
       .then(data => setServerStatus(data))
-      .catch(() => setServerStatus({ resendConfigured: false, geminiConfigured: true }));
+      .catch(() => setServerStatus({ resendConfigured: false }));
   }, []);
 
   // Auto-calculate next edition helper
@@ -138,45 +137,6 @@ export const WeeklyBriefingManager: React.FC = () => {
     setSelectedPostIds(recent);
   };
 
-  // Generate Intro with Gemini AI
-  const handleGenerateWithAi = async () => {
-    if (selectedPosts.length === 0) {
-      setFeedback({ type: 'error', text: 'Selecione pelo menos um artigo para a IA sintetizar o briefing.' });
-      return;
-    }
-
-    setIsGeneratingAi(true);
-    setFeedback({ type: 'info', text: 'Gerando mensagem editorial técnica com inteligência artificial...' });
-
-    try {
-      const resp = await fetch('/api/briefing/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          articles: selectedPosts.map(p => ({
-            title: p.title,
-            category: p.category,
-            technicalBadge: p.technicalBadge
-          })),
-          authorName: 'Alexandre Andrade',
-          themeFocus: 'Manutenção Aeronáutica e Cultura de Segurança SIPAER'
-        })
-      });
-
-      const data = await resp.json();
-      if (data.success && data.generatedIntro) {
-        setCustomMessage(data.generatedIntro);
-        setFeedback({ type: 'success', text: 'Mensagem editorial gerada com sucesso pelo Gemini!' });
-      } else {
-        setFeedback({ type: 'error', text: data.error || 'Não foi possível gerar com IA.' });
-      }
-    } catch (err: any) {
-      setFeedback({ type: 'error', text: err?.message || 'Falha de conexão com o gerador.' });
-    } finally {
-      setIsGeneratingAi(false);
-      setTimeout(() => setFeedback(null), 5000);
-    }
-  };
 
   // Send Single Test Email
   const handleSendTestEmail = async () => {
@@ -394,7 +354,7 @@ export const WeeklyBriefingManager: React.FC = () => {
               Briefing Semanal de Aviação
             </h2>
             <p className="text-slate-300 text-sm sm:text-base mt-1 max-w-2xl">
-              Crie, personalize, gere com IA e dispare o briefing técnico semanal diretamente para a caixa de entrada dos seus leitores e aviadores.
+              Crie, personalize e dispare o briefing técnico semanal diretamente para a caixa de entrada dos seus leitores e aviadores.
             </p>
           </div>
 
@@ -611,26 +571,11 @@ export const WeeklyBriefingManager: React.FC = () => {
                 />
               </div>
 
-              {/* Custom Editorial Message with AI Generator Button */}
+              {/* Custom Editorial Message */}
               <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-600">
-                    Mensagem Editorial do Autor
-                  </label>
-                  <button
-                    type="button"
-                    onClick={handleGenerateWithAi}
-                    disabled={isGeneratingAi || selectedPosts.length === 0}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 text-amber-800 border border-amber-200 rounded-lg text-xs font-bold hover:bg-amber-100 transition-colors disabled:opacity-50 cursor-pointer"
-                  >
-                    {isGeneratingAi ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-600" />
-                    ) : (
-                      <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-                    )}
-                    {isGeneratingAi ? 'Escrevendo...' : 'Gerar com IA (Gemini)'}
-                  </button>
-                </div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                  Mensagem Editorial do Autor
+                </label>
                 <textarea
                   rows={4}
                   value={customMessage}
@@ -638,9 +583,6 @@ export const WeeklyBriefingManager: React.FC = () => {
                   placeholder="Escreva uma breve introdução ou reflexão técnica sobre a semana..."
                   className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-blue-600 text-slate-700 text-sm"
                 />
-                <p className="text-xs text-slate-400 mt-1">
-                  Dica: Selecione os artigos abaixo e clique em "Gerar com IA" para obter um resumo editorial pronto.
-                </p>
               </div>
             </div>
 

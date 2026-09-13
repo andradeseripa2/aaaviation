@@ -110,8 +110,8 @@ export const CommunityHangarCta: React.FC = () => {
               <div className="w-6 h-6 rounded-lg bg-emerald-600/30 flex items-center justify-center text-emerald-400">
                 <MessageSquare className="w-3.5 h-3.5" />
               </div>
-              <h4 className="text-xs font-bold text-white font-['Outfit']">Debates & IA</h4>
-              <p className="text-[11px] text-slate-400 leading-tight">Comente e debata com especialistas de IA.</p>
+              <h4 className="text-xs font-bold text-white font-['Outfit']">Debates Técnicos</h4>
+              <p className="text-[11px] text-slate-400 leading-tight">Comente e debata os artigos com outros leitores.</p>
             </div>
 
             <div className="p-3 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-xs space-y-1">

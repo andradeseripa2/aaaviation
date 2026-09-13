@@ -12,7 +12,6 @@ import { EditRadarSection } from './EditRadarSection';
 import { EditLeadMaterialSection } from './EditLeadMaterialSection';
 import { CategoryManager } from './CategoryManager';
 import { WeeklyBriefingManager } from './WeeklyBriefingManager';
-import { AIAgentsModerationManager } from './AIAgentsModerationManager';
 import { AVAILABLE_BADGES } from '../../data/badgesData';
 import { BadgePill } from '../common/BadgePill';
 import { resolveImageUrl } from '../../services/mediaService';
@@ -46,7 +45,6 @@ import {
   Calendar,
   Clock,
   Radio,
-  Bot,
   Sparkles,
   ChevronDown,
   Save,
@@ -88,15 +86,10 @@ export const AdminDashboard: React.FC = () => {
     navigate,
     getCategoryName,
     getCategoryVisual,
-    aiAgents,
-    aiModerationConfig,
-    generateAIReplyForComment,
-    approveSuggestedAIReply,
-    dismissSuggestedAIReply,
     lastRebuildAt
   } = useBlog();
 
-  const [activeTab, setActiveTab] = useState<'posts' | 'new-post' | 'drafts' | 'lead-material' | 'ai-agents' | 'briefing' | 'radar' | 'about' | 'contact' | 'comments' | 'users' | 'categories' | 'ads' | 'messages'>('posts');
+  const [activeTab, setActiveTab] = useState<'posts' | 'new-post' | 'drafts' | 'lead-material' | 'briefing' | 'radar' | 'about' | 'contact' | 'comments' | 'users' | 'categories' | 'ads' | 'messages'>('posts');
   const [editingPost, setEditingPost] = useState<Post | null>(null);
   const [postToDelete, setPostToDelete] = useState<Post | null>(null);
   const [isDeletingPost, setIsDeletingPost] = useState(false);
@@ -108,8 +101,6 @@ export const AdminDashboard: React.FC = () => {
   const [commentSearch, setCommentSearch] = useState('');
   const [adminReplyCommentId, setAdminReplyCommentId] = useState<string | null>(null);
   const [adminReplyText, setAdminReplyText] = useState('');
-  const [generatingAIReplyId, setGeneratingAIReplyId] = useState<string | null>(null);
-  const [aiMenuOpenCommentId, setAiMenuOpenCommentId] = useState<string | null>(null);
 
   // Post form state
   const [postTitle, setPostTitle] = useState('');
@@ -692,7 +683,6 @@ export const AdminDashboard: React.FC = () => {
           { id: 'posts', label: 'Gerenciar Artigos', icon: FileText, count: posts.length },
           { id: 'new-post', label: editingPost ? 'Editar Artigo' : 'Criar Artigo', icon: Plus },
           { id: 'drafts', label: 'Rascunhos Salvos', icon: BookmarkCheck, count: savedDraftsList.length, highlightDraft: savedDraftsList.length > 0 },
-          { id: 'ai-agents', label: 'Agentes de IA & Moderação', icon: Bot, count: aiAgents.filter(a => a.enabled).length, highlightAi: true },
           { id: 'radar', label: 'Radar (Avisos)', icon: Radio, highlight: true },
           { id: 'lead-material', label: 'Checklist & Material SGSO', icon: FileCheck2, count: capturedLeads.length, highlightSgso: true },
           { id: 'briefing', label: 'Briefing Semanal', icon: Send, count: newsletterSubscribers.length, highlight: true },
@@ -717,8 +707,6 @@ export const AdminDashboard: React.FC = () => {
                   ? 'bg-blue-50 border border-blue-300 text-blue-900 hover:bg-blue-100'
                   : (tab as any).highlightDraft
                   ? 'bg-emerald-50 border border-emerald-300 text-emerald-900 hover:bg-emerald-100'
-                  : (tab as any).highlightAi
-                  ? 'bg-blue-50 border border-blue-300 text-blue-900 hover:bg-blue-100'
                   : (tab as any).highlight
                   ? 'bg-amber-50 border border-amber-300 text-amber-900 hover:bg-amber-100'
                   : 'bg-white border border-[#CBD5E1] text-[#475569] hover:bg-[#F8FAFC]'
@@ -1404,11 +1392,6 @@ export const AdminDashboard: React.FC = () => {
         </div>
       )}
 
-      {/* TAB: AGENTES DE IA & MODERAÇÃO */}
-      {activeTab === 'ai-agents' && (
-        <AIAgentsModerationManager />
-      )}
-
       {/* TAB 3: MODERAÇÃO DE COMENTÁRIOS */}
       {activeTab === 'comments' && (
         <div className="bg-white rounded-3xl border border-[#E2E8F0] shadow-xs overflow-hidden">
@@ -1419,13 +1402,8 @@ export const AdminDashboard: React.FC = () => {
                 <span className="px-2 py-0.5 rounded-full text-[11px] font-mono font-bold bg-blue-100 text-blue-800">
                   {comments.length} total
                 </span>
-                {comments.filter(c => c.suggestedAIReply).length > 0 && (
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-indigo-600 text-white animate-pulse">
-                    {comments.filter(c => c.suggestedAIReply).length} sugestão(ões) de IA prontas
-                  </span>
-                )}
               </div>
-              <p className="text-xs text-[#64748B] mt-0.5">Aprove, reprove, responda manualmente ou use os Especialistas de IA para responder dúvidas técnicas.</p>
+              <p className="text-xs text-[#64748B] mt-0.5">Aprove, oculte, responda ou exclua os comentários dos leitores.</p>
             </div>
 
             {/* Filter pills */}
@@ -1514,9 +1492,6 @@ export const AdminDashboard: React.FC = () => {
                 const targetPost = posts.find(p => p.id === c.postId || p.slug === c.postId);
                 const postTitleDisplay = targetPost?.title || c.postTitle || 'Artigo';
                 const isReplying = adminReplyCommentId === c.id;
-                const isGeneratingAI = generatingAIReplyId === c.id;
-                const isAIMenuOpen = aiMenuOpenCommentId === c.id;
-                const hasScheduledAuto = c.aiAutoReplyScheduledAt && (!c.replies || !c.replies.some(r => r.isAIReply));
 
                 return (
                   <div
@@ -1524,8 +1499,6 @@ export const AdminDashboard: React.FC = () => {
                     className={`p-4 sm:p-5 rounded-2xl border transition-all ${
                       c.status === 'rejected'
                         ? 'bg-amber-50/40 border-amber-200'
-                        : c.suggestedAIReply
-                        ? 'bg-gradient-to-r from-blue-50/60 to-indigo-50/40 border-blue-300 shadow-xs'
                         : 'bg-[#F8FAFC] border-[#E2E8F0] hover:border-slate-300'
                     }`}
                   >
@@ -1542,12 +1515,6 @@ export const AdminDashboard: React.FC = () => {
                           ) : (
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
                               <XCircle className="w-3 h-3 text-amber-600" /> Ocultado
-                            </span>
-                          )}
-
-                          {hasScheduledAuto && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-300">
-                              <Clock className="w-3 h-3 text-blue-600" /> Auto-Resposta Agendada
                             </span>
                           )}
 
@@ -1581,76 +1548,6 @@ export const AdminDashboard: React.FC = () => {
 
                       {/* Action buttons */}
                       <div className="flex items-center flex-wrap gap-1.5 shrink-0 self-end sm:self-start">
-                        {/* AI Reply Trigger Dropdown Button */}
-                        <div className="relative">
-                          <button
-                            type="button"
-                            disabled={isGeneratingAI}
-                            onClick={() => setAiMenuOpenCommentId(isAIMenuOpen ? null : c.id)}
-                            className="px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
-                            title="Gerar resposta com Inteligência Artificial"
-                          >
-                            {isGeneratingAI ? (
-                              <>
-                                <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                                <span>Gerando...</span>
-                              </>
-                            ) : (
-                              <>
-                                <Bot className="w-3.5 h-3.5" />
-                                <span>IA Especialista</span>
-                                <ChevronDown className="w-3 h-3" />
-                              </>
-                            )}
-                          </button>
-
-                          {isAIMenuOpen && (
-                            <div className="absolute right-0 top-full mt-1.5 w-64 bg-white rounded-2xl shadow-xl border border-slate-200 p-2 z-20 space-y-1 animate-in fade-in zoom-in-95 duration-100">
-                              <div className="px-2 py-1 text-[10px] font-mono text-slate-400 uppercase font-bold">
-                                Escolher Especialista:
-                              </div>
-                              <button
-                                type="button"
-                                onClick={async () => {
-                                  setAiMenuOpenCommentId(null);
-                                  setGeneratingAIReplyId(c.id);
-                                  await generateAIReplyForComment(c.id);
-                                  setGeneratingAIReplyId(null);
-                                }}
-                                className="w-full text-left p-2 rounded-xl text-xs hover:bg-blue-50 text-[#0A192F] font-bold flex items-center gap-2 cursor-pointer"
-                              >
-                                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                                <div>
-                                  <div>Roteamento Inteligente</div>
-                                  <div className="text-[10px] text-slate-400 font-normal">A IA escolhe o melhor perfil</div>
-                                </div>
-                              </button>
-                              
-                              <div className="border-t border-slate-100 my-1"></div>
-
-                              {aiAgents.filter(a => a.enabled).map(agent => (
-                                <button
-                                  key={agent.id}
-                                  type="button"
-                                  onClick={async () => {
-                                    setAiMenuOpenCommentId(null);
-                                    setGeneratingAIReplyId(c.id);
-                                    await generateAIReplyForComment(c.id, agent.id);
-                                    setGeneratingAIReplyId(null);
-                                  }}
-                                  className="w-full text-left p-2 rounded-xl text-xs hover:bg-blue-50 text-[#0A192F] flex items-center gap-2 cursor-pointer"
-                                >
-                                  <img src={agent.avatar} alt={agent.name} className="w-5 h-5 rounded-full object-cover border" />
-                                  <div className="truncate">
-                                    <div className="font-bold truncate">{agent.name}</div>
-                                    <div className="text-[9px] text-blue-600 font-mono uppercase">{agent.badge}</div>
-                                  </div>
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-
                         {c.status !== 'approved' && (
                           <button
                             onClick={() => approveComment(c.id)}
@@ -1698,69 +1595,6 @@ export const AdminDashboard: React.FC = () => {
                         </button>
                       </div>
                     </div>
-
-                    {/* SUGGESTED AI REPLY CARD */}
-                    {c.suggestedAIReply && (
-                      <div className="mt-4 p-4 rounded-2xl bg-white border-2 border-blue-300 shadow-md space-y-3 animate-in zoom-in-95 duration-150">
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
-                          <div className="flex items-center gap-2.5">
-                            <img
-                              src={resolveImageUrl(c.suggestedAIReply.agentAvatar)}
-                              alt={c.suggestedAIReply.agentName}
-                              className="w-8 h-8 rounded-xl object-cover border-2 border-blue-400 shadow-2xs"
-                              onError={e => {
-                                (e.target as HTMLImageElement).src = `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(
-                                  c.suggestedAIReply?.agentName || 'Agent'
-                                )}`;
-                              }}
-                            />
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs font-bold text-[#0A192F] font-['Outfit']">
-                                  {c.suggestedAIReply.agentName}
-                                </span>
-                                <span className="px-2 py-0.5 rounded-md bg-blue-600 text-white text-[9px] font-black uppercase">
-                                  {c.suggestedAIReply.agentBadge}
-                                </span>
-                              </div>
-                              <span className="text-[10px] text-[#64748B]">{c.suggestedAIReply.agentRole}</span>
-                            </div>
-                          </div>
-
-                          <span className="text-[10px] font-mono text-indigo-600 font-bold bg-indigo-50 px-2 py-0.5 rounded-md self-start sm:self-auto">
-                            💡 Sugestão Gerada por IA — Aguardando Sua Aprovação
-                          </span>
-                        </div>
-
-                        {c.suggestedAIReply.reasoning && (
-                          <p className="text-[11px] text-slate-500 italic bg-slate-50 p-2 rounded-lg border border-slate-100">
-                            <strong>Critério de Seleção:</strong> {c.suggestedAIReply.reasoning}
-                          </p>
-                        )}
-
-                        <div className="p-3 bg-blue-50/40 rounded-xl border border-blue-100 text-xs text-[#334155] leading-relaxed whitespace-pre-line font-medium">
-                          {c.suggestedAIReply.text}
-                        </div>
-
-                        <div className="flex items-center justify-end gap-2 pt-1">
-                          <button
-                            type="button"
-                            onClick={() => dismissSuggestedAIReply(c.id)}
-                            className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-xl font-bold cursor-pointer"
-                          >
-                            Descartar Sugestão
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => approveSuggestedAIReply(c.id)}
-                            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-xs cursor-pointer font-['Outfit']"
-                          >
-                            <CheckCircle2 className="w-4 h-4" />
-                            <span>Aprovar & Publicar Resposta da IA</span>
-                          </button>
-                        </div>
-                      </div>
-                    )}
 
                     {/* Admin Reply Form */}
                     {isReplying && (
@@ -1810,27 +1644,15 @@ export const AdminDashboard: React.FC = () => {
                           Respostas aninhadas ({c.replies.length}):
                         </span>
                         {c.replies.map(r => {
-                          const isAI = r.isAIReply || r.userId?.startsWith('ai-agent-');
                           return (
                             <div
                               key={r.id}
-                              className={`pl-3 py-2 pr-3 rounded-xl border flex items-start justify-between gap-3 text-xs ${
-                                isAI
-                                  ? 'bg-blue-50/80 border-blue-200'
-                                  : 'bg-white border-slate-200'
-                              }`}
+                              className="pl-3 py-2 pr-3 rounded-xl border flex items-start justify-between gap-3 text-xs bg-white border-slate-200"
                             >
                               <div className="space-y-0.5 flex-1">
                                 <div className="flex items-center gap-1.5 flex-wrap">
                                   <span className="font-bold text-[#0A192F]">{r.userName}</span>
-                                  {isAI ? (
-                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-md bg-blue-600 text-white text-[9px] font-black uppercase">
-                                      <Bot className="w-2.5 h-2.5" />
-                                      {r.agentBadge || 'ESPECIALISTA IA'}
-                                    </span>
-                                  ) : (
-                                    r.userTitle && <span className="text-[10px] text-slate-500">({r.userTitle})</span>
-                                  )}
+                                  {r.userTitle && <span className="text-[10px] text-slate-500">({r.userTitle})</span>}
                                   <span className="text-[10px] text-slate-400 font-mono">
                                     {new Date(r.createdAt).toLocaleString('pt-BR')}
                                   </span>

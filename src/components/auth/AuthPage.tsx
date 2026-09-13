@@ -209,7 +209,7 @@ export const AuthPage: React.FC = () => {
               </li>
               <li className="flex items-center gap-1.5">
                 <MessageSquare className="w-3.5 h-3.5 text-[#1D4ED8] shrink-0" />
-                <span>Comentar & Debater com IA</span>
+                <span>Comentar & Debater os Artigos</span>
               </li>
               <li className="flex items-center gap-1.5">
                 <Bookmark className="w-3.5 h-3.5 text-amber-500 shrink-0" />
