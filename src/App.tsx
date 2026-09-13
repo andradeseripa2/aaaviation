@@ -15,6 +15,7 @@ import { BreakingNewsTicker } from './components/home/BreakingNewsTicker';
 import { CommunityHangarCta } from './components/home/CommunityHangarCta';
 import { AuthorAuthorityCard } from './components/home/AuthorAuthorityCard';
 import { CookieConsentBanner } from './components/common/CookieConsentBanner';
+import { WriteErrorToast } from './components/common/WriteErrorToast';
 import { Plane, ArrowLeft, Loader2, Clock } from 'lucide-react';
 import { isPostPublishedAndActive } from './lib/scheduleUtils';
 
@@ -300,6 +301,7 @@ const MainContent: React.FC = () => {
       <Footer />
       <ScrollToTop />
       <CookieConsentBanner />
+      <WriteErrorToast />
     </div>
   );
 };

@@ -33,6 +33,8 @@ import {
   safeRemoveItem
 } from '../lib/safeStorage';
 import { compressAvatar } from '../lib/imageUtils';
+import { sanitizeForFirestore } from '../lib/sanitizeForFirestore';
+import { reportWriteError } from '../lib/writeErrors';
 
 interface AuthContextType {
   user: User | null;
@@ -497,16 +499,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     }
 
-    // Persist to Firestore with timeout protection
+    // Persist to Firestore with timeout protection.
+    // O documento é o usuário inteiro, e campos opcionais (bio, título) costumam
+    // vir undefined — sem a sanitização, o Firestore recusava a atualização.
+    const FIRESTORE_TIMEOUT = 'Firestore timeout';
     try {
       const userRef = doc(db, 'users', currentUid);
-      const firestorePromise = setDoc(userRef, updatedUser, { merge: true });
+      const firestorePromise = setDoc(userRef, sanitizeForFirestore(updatedUser), { merge: true });
       const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Firestore timeout')), 4000)
+        setTimeout(() => reject(new Error(FIRESTORE_TIMEOUT)), 4000)
       );
       await Promise.race([firestorePromise, timeoutPromise]);
     } catch (e) {
-      console.warn('Firestore user update write note:', e);
+      // Estourar os 4 segundos não é falha: o SDK continua tentando gravar em
+      // segundo plano. Só um erro de verdade (permissão, dados recusados) é
+      // reportado e desfeito.
+      if ((e as Error)?.message !== FIRESTORE_TIMEOUT) {
+        console.error('Firestore user update error:', e);
+        setUser(user);
+        safeSetJSON(STORAGE_KEY_USER, user);
+        setUsersList(prev => prev.map(u => (u.id === currentUid || u.id === user.id ? user : u)));
+        return { success: false, error: 'Não foi possível salvar seu perfil. Tente novamente.' };
+      }
+      console.warn('Firestore user update still pending after 4s:', e);
     }
 
     return { success: true };
@@ -516,7 +531,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await deleteDoc(doc(db, 'users', userId));
     } catch (e) {
-      console.warn('User deletion note:', e);
+      reportWriteError('Exclusão do usuário', e);
+      return;
     }
     setUsersList(prev => prev.filter(u => u.id !== userId));
     if (user?.id === userId) {
@@ -532,7 +548,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await updateDoc(doc(db, 'users', userId), { role: newRole });
     } catch (e) {
-      console.warn('Toggle user role note:', e);
+      reportWriteError('Alteração do papel do usuário', e);
+      return;
     }
 
     setUsersList(prev =>
@@ -561,8 +578,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         badges: newBadges,
         equippedBadges: newEquipped
       });
+    } catch (e) {
+      reportWriteError('Concessão da insígnia', e);
+      return { success: false, error: 'Não foi possível conceder a insígnia.' };
+    }
 
-      // Also create an in-app notification for the user
+    // A notificação é secundária: se falhar, a insígnia já foi concedida.
+    try {
       const notifId = `notif-${Date.now()}`;
       await setDoc(doc(db, 'notifications', notifId), {
         id: notifId,
@@ -575,7 +597,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         createdAt: new Date().toISOString()
       });
     } catch (e) {
-      console.warn('Grant badge note:', e);
+      console.error('Grant badge notification error:', e);
     }
 
     setUsersList(prev =>
@@ -606,7 +628,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         equippedBadges: newEquipped
       });
     } catch (e) {
-      console.warn('Remove badge note:', e);
+      reportWriteError('Remoção da insígnia', e);
+      return { success: false, error: 'Não foi possível remover a insígnia.' };
     }
 
     setUsersList(prev =>
@@ -658,7 +681,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         equippedBadges: newEquipped
       });
     } catch (e) {
-      console.warn('Toggle equipped badge note:', e);
+      reportWriteError('Insígnias exibidas no perfil', e);
+      setUser(user);
+      safeSetJSON(STORAGE_KEY_USER, user);
+      setUsersList(prev => prev.map(u => (u.id === user.id ? user : u)));
+      return { success: false, error: 'Não foi possível atualizar suas insígnias.' };
     }
 
     return { success: true };

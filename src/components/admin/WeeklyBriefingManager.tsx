@@ -137,6 +137,24 @@ export const WeeklyBriefingManager: React.FC = () => {
     setSelectedPostIds(recent);
   };
 
+  // O envio de e-mails depende do servidor Express (server.ts), que roda no
+  // Cloud Run do AI Studio mas NÃO na hospedagem atual (Netlify, só estáticos).
+  // Lá, /api/briefing/send devolve uma página HTML: o `resp.json()` quebrava e o
+  // painel mostrava "Unexpected token '<'...". Aqui a resposta é validada antes,
+  // e a mensagem diz o que de fato aconteceu.
+  const SERVER_UNAVAILABLE =
+    'O envio de e-mails depende do servidor da aplicação, que não roda na hospedagem atual (Netlify). Nenhum e-mail foi enviado.';
+
+  const postBriefing = async (body: object): Promise<any> => {
+    const resp = await fetch('/api/briefing/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const isJson = (resp.headers.get('content-type') || '').includes('application/json');
+    if (!isJson) throw new Error(SERVER_UNAVAILABLE);
+    return resp.json();
+  };
 
   // Send Single Test Email
   const handleSendTestEmail = async () => {
@@ -149,23 +167,21 @@ export const WeeklyBriefingManager: React.FC = () => {
     setFeedback({ type: 'info', text: `Enviando e-mail de teste para ${testEmail}...` });
 
     try {
-      const resp = await fetch('/api/briefing/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          recipients: [{ email: testEmail }],
-          subject: `[TESTE] ${subject}`,
-          htmlContent: emailHtml,
-          testMode: true
-        })
+      const data = await postBriefing({
+        recipients: [{ email: testEmail }],
+        subject: `[TESTE] ${subject}`,
+        htmlContent: emailHtml,
+        testMode: true
       });
 
-      const data = await resp.json();
-      if (data.success) {
+      if (data.success && data.simulated) {
+        // Modo demonstração: o servidor respondeu, mas sem RESEND_API_KEY nada sai.
         setFeedback({
-          type: 'success',
-          text: `Teste enviado para ${testEmail}! ${data.simulated ? '(Modo Demonstração ativo)' : '(Enviado via Resend)'}`
+          type: 'info',
+          text: `Modo demonstração: nenhum e-mail foi enviado para ${testEmail} (chave do Resend não configurada).`
         });
+      } else if (data.success) {
+        setFeedback({ type: 'success', text: `Teste enviado para ${testEmail} via Resend.` });
       } else {
         setFeedback({ type: 'error', text: data.error || 'Erro ao enviar teste.' });
       }
@@ -209,42 +225,54 @@ export const WeeklyBriefingManager: React.FC = () => {
     await saveBriefingCampaign(newCampaign);
 
     try {
-      const resp = await fetch('/api/briefing/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          recipients: newsletterSubscribers.map(s => ({ email: s.email, id: s.id })),
-          subject,
-          htmlContent: emailHtml,
-          testMode: false
-        })
+      const data = await postBriefing({
+        recipients: newsletterSubscribers.map(s => ({ email: s.email, id: s.id })),
+        subject,
+        htmlContent: emailHtml,
+        testMode: false
       });
 
-      const data = await resp.json();
+      // Envio simulado não é envio: sem a chave do Resend o servidor responde
+      // success, mas nenhum assinante recebe nada. Antes isso virava "disparado
+      // com sucesso para N assinantes" e a campanha ficava marcada como enviada.
+      const reallySent = data.success && !data.simulated;
 
       const finishedCampaign: BriefingCampaign = {
         ...newCampaign,
-        status: data.success ? 'sent' : 'failed',
-        sentAt: new Date().toISOString(),
-        successCount: data.successCount || 0,
-        errorLog: data.errors ? data.errors.join('\n') : undefined
+        status: reallySent ? 'sent' : 'failed',
+        sentAt: reallySent ? new Date().toISOString() : undefined,
+        successCount: reallySent ? data.successCount || 0 : 0,
+        errorLog: data.simulated
+          ? 'Modo demonstração: nenhum e-mail foi enviado (RESEND_API_KEY não configurada).'
+          : data.errors
+          ? data.errors.join('\n')
+          : undefined
       };
 
       await saveBriefingCampaign(finishedCampaign);
 
-      if (data.success) {
+      if (reallySent) {
         setFeedback({
           type: 'success',
-          text: `Briefing Semanal disparado com sucesso para ${data.successCount} assinante(s)!`
+          text: `Briefing Semanal enviado via Resend para ${data.successCount} assinante(s).`
         });
       } else {
         setFeedback({
           type: 'error',
-          text: data.error || 'Houve falhas no disparo do briefing.'
+          text: data.simulated
+            ? 'Modo demonstração: nenhum e-mail foi enviado (chave do Resend não configurada).'
+            : data.error || 'Houve falhas no disparo do briefing.'
         });
       }
     } catch (err: any) {
       console.error('Error dispatching briefing:', err);
+      // A campanha foi salva como "enviando" antes do disparo; sem esta
+      // atualização ela ficava travada nesse estado para sempre.
+      await saveBriefingCampaign({
+        ...newCampaign,
+        status: 'failed',
+        errorLog: err?.message || 'Falha de comunicação no envio do briefing.'
+      });
       setFeedback({ type: 'error', text: err?.message || 'Falha de comunicação no envio do briefing.' });
     } finally {
       setIsSendingMass(false);

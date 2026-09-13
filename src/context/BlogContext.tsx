@@ -45,6 +45,8 @@ import {
 import { INITIAL_LEAD_MATERIAL_CONFIG } from '../types';
 import { isPostPublishedAndActive } from '../lib/scheduleUtils';
 import { useAuth } from './AuthContext';
+import { reportWriteError } from '../lib/writeErrors';
+import { sanitizeForFirestore } from '../lib/sanitizeForFirestore';
 import { generateBriefingHtml } from '../lib/emailTemplate';
 import {
   safeGetItem,
@@ -268,30 +270,6 @@ export const getCommentTime = (c: Comment): number => {
   }
   return 0;
 };
-
-/**
- * Deeply sanitizes objects before sending to Firestore.
- * Removes any undefined values at any nesting depth to prevent Firestore SDK write rejections.
- */
-export function sanitizeForFirestore<T>(obj: T): T {
-  if (obj === undefined) return undefined as any;
-  if (obj === null) return null as any;
-  if (Array.isArray(obj)) {
-    return obj
-      .filter(item => item !== undefined)
-      .map(item => (typeof item === 'object' && item !== null ? sanitizeForFirestore(item) : item)) as any;
-  }
-  if (typeof obj === 'object') {
-    const clean: Record<string, any> = {};
-    for (const [key, value] of Object.entries(obj)) {
-      if (value !== undefined) {
-        clean[key] = typeof value === 'object' && value !== null ? sanitizeForFirestore(value) : value;
-      }
-    }
-    return clean as T;
-  }
-  return obj;
-}
 
 const LEGACY_MOCK_POST_IDS = new Set([
   'post-sipaer',
@@ -926,10 +904,10 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 htmlContent: autoBriefingHtml,
                 testMode: false
               })
-            }).catch(err => console.warn('Auto newsletter notify error:', err));
+            }).catch(err => console.error('Auto newsletter notify error:', err));
           }
         } catch (e) {
-          console.warn('Error auto-publishing scheduled post:', e);
+          console.error('Error auto-publishing scheduled post:', e);
         }
       }
 
@@ -981,7 +959,7 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setBriefingCampaigns(prev => prev.map(c => (c.id === campaign.id ? finalStatus : c)));
           await setDoc(doc(db, 'briefings', campaign.id), finalStatus, { merge: true });
         } catch (err) {
-          console.warn('Error auto-dispatching scheduled briefing campaign:', err);
+          console.error('Error auto-dispatching scheduled briefing campaign:', err);
           await setDoc(doc(db, 'briefings', campaign.id), { status: 'failed', errorLog: String(err) }, { merge: true });
         }
       }
@@ -1450,7 +1428,7 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
       sanitizedContent = mediaResult.sanitizedContent;
       resolvedCover = mediaResult.resolvedCover;
     } catch (mediaErr) {
-      console.warn('persistPostMedia warning during createPost:', mediaErr);
+      reportWriteError('Imagens do artigo (a capa pode sair sem imagem no LinkedIn)', mediaErr);
     }
 
     const newPost: Post = {
@@ -1531,7 +1509,7 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
           sanitizedUpdates.coverImage = resolvedCover;
         }
       } catch (mediaErr) {
-        console.warn('persistPostMedia warning during updatePost:', mediaErr);
+        reportWriteError('Imagens do artigo (a capa pode sair sem imagem no LinkedIn)', mediaErr);
       }
     }
 
@@ -1601,7 +1579,7 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         await updateDoc(doc(db, 'posts', id), { featured: true });
       } catch (err) {
-        console.warn('Firestore setFeaturedPost single fallback note:', err);
+        reportWriteError('Artigo em destaque', err);
       }
     }
   };
@@ -1615,7 +1593,7 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await deleteDoc(doc(db, 'posts', id));
     } catch (e) {
-      console.warn('Firestore primary deletePost note:', e);
+      reportWriteError('Exclusão do artigo', e);
     }
 
     // 3. Delete any document with matching id or slug
@@ -1663,7 +1641,7 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await updateDoc(doc(db, 'posts', id), { published: newStatus });
       saved = true;
     } catch (e) {
-      console.warn('Firestore togglePublishPost note:', e);
+      reportWriteError('Publicação do artigo', e);
     }
 
     // Publicar e despublicar exigem build novo: um cria a página estática,
@@ -1686,7 +1664,7 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await updateDoc(doc(db, 'posts', postId), { viewsCount: (target.viewsCount || 0) + 1 });
       }
     } catch (e) {
-      console.warn('Increment views note:', e);
+      console.error('Increment views note:', e);
     }
   };
 
@@ -1726,7 +1704,7 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await updateDoc(doc(db, 'posts', postId), { likesCount: newLikes });
     } catch (e) {
-      console.warn('Toggle like post note:', e);
+      reportWriteError('Curtida no artigo', e);
     }
   };
 
@@ -1736,7 +1714,8 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     const cleanScore = Math.min(5, Math.max(1, Math.round(score)));
 
-    const currentPostRatings = ratings[postId] ? { ...ratings[postId] } : {};
+    const previousPostRatings = ratings[postId];
+    const currentPostRatings = previousPostRatings ? { ...previousPostRatings } : {};
     currentPostRatings[user.id] = cleanScore;
 
     setRatings(prev => ({
@@ -1751,7 +1730,15 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updatedAt: new Date().toISOString()
       });
     } catch (e) {
-      console.warn('Firestore ratePost note:', e);
+      // O componente de avaliação não exibe erro, então o aviso vem pelo canal global.
+      reportWriteError('Avaliação do artigo', e);
+      setRatings(prev => {
+        const next = { ...prev };
+        if (previousPostRatings) next[postId] = previousPostRatings;
+        else delete next[postId];
+        return next;
+      });
+      return { success: false, error: 'Não foi possível registrar sua avaliação.' };
     }
 
     return { success: true };
@@ -1855,52 +1842,62 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
       likes: 0
     };
 
-    let updatedComment: Comment | null = null;
+    // O documento a gravar é montado a partir do estado atual, e não dentro do
+    // updater do setComments: o React pode executar o updater depois, e aí a
+    // variável ainda estaria vazia na hora de gravar — a resposta apareceria na
+    // tela sem nunca ser enviada ao banco.
+    const parentComment = comments.find(c => c.id === commentId);
+    if (!parentComment) {
+      return { success: false, error: 'Comentário não encontrado. Recarregue a página.' };
+    }
+    const currentReplies = Array.isArray(parentComment.replies) ? parentComment.replies : [];
+    const updatedComment: Comment = {
+      ...parentComment,
+      replies: [...currentReplies.filter(r => r.id !== newReply.id), newReply]
+    };
 
-    setComments(prev => {
-      const next = prev.map(c => {
-        if (c.id === commentId) {
-          const currentReplies = Array.isArray(c.replies) ? c.replies : [];
-          const repliesMap = new Map<string, CommentReply>();
-          currentReplies.forEach(r => repliesMap.set(r.id, r));
-          repliesMap.set(newReply.id, newReply);
-          const updatedReplies = Array.from(repliesMap.values());
-          updatedComment = { ...c, replies: updatedReplies };
-          return updatedComment;
-        }
-        return c;
+    const applyReplies = (transform: (replies: CommentReply[]) => CommentReply[]) =>
+      setComments(prev => {
+        const next = prev.map(c =>
+          c.id === commentId ? { ...c, replies: transform(Array.isArray(c.replies) ? c.replies : []) } : c
+        );
+        safeSetJSON(STORAGE_KEY_COMMENTS, next);
+        return next;
       });
-      safeSetJSON(STORAGE_KEY_COMMENTS, next);
-      return next;
-    });
 
+    applyReplies(replies => [...replies.filter(r => r.id !== newReply.id), newReply]);
+
+    // Mesmo defeito do addComment: `userTitle` pode vir undefined (ex: login
+    // pelo Google), e o Firestore recusa o documento inteiro por isso.
     try {
-      if (updatedComment) {
-        // Mesmo defeito do addComment: `userTitle` pode vir undefined (ex: login
-        // pelo Google), e o Firestore recusa o documento inteiro por isso.
-        await setDoc(doc(db, 'comments', commentId), sanitizeForFirestore(updatedComment), { merge: true });
-
-        // Notify parent comment author if it's someone else
-        const parentComment = comments.find(c => c.id === commentId);
-        if (parentComment && parentComment.userId && parentComment.userId !== user.id) {
-          const notifId = `notif-${Date.now()}`;
-          const targetPost = posts.find(p => p.id === parentComment.postId || p.slug === parentComment.postId);
-          const postSlug = targetPost?.slug || parentComment.postId;
-
-          await setDoc(doc(db, 'notifications', notifId), {
-            id: notifId,
-            userId: parentComment.userId,
-            type: 'comment_reply',
-            title: 'Nova Resposta ao seu Comentário 💬',
-            message: `${user.name} respondeu ao seu comentário no artigo "${parentComment.postTitle || targetPost?.title || 'Artigo'}": "${content.slice(0, 80)}${content.length > 80 ? '...' : ''}"`,
-            linkUrl: postSlug,
-            read: false,
-            createdAt: new Date().toISOString()
-          });
-        }
-      }
+      await setDoc(doc(db, 'comments', commentId), sanitizeForFirestore(updatedComment), { merge: true });
     } catch (e) {
-      console.warn('Firestore addCommentReply note:', e);
+      console.error('Firestore addCommentReply error:', e);
+      applyReplies(replies => replies.filter(r => r.id !== newReply.id));
+      return { success: false, error: 'Não foi possível publicar sua resposta. Tente novamente.' };
+    }
+
+    // A notificação ao autor do comentário é secundária: se falhar, a resposta
+    // já está salva e o leitor não deve receber erro por isso.
+    if (parentComment.userId && parentComment.userId !== user.id) {
+      try {
+        const notifId = `notif-${Date.now()}`;
+        const targetPost = posts.find(p => p.id === parentComment.postId || p.slug === parentComment.postId);
+        const postSlug = targetPost?.slug || parentComment.postId;
+
+        await setDoc(doc(db, 'notifications', notifId), {
+          id: notifId,
+          userId: parentComment.userId,
+          type: 'comment_reply',
+          title: 'Nova Resposta ao seu Comentário 💬',
+          message: `${user.name} respondeu ao seu comentário no artigo "${parentComment.postTitle || targetPost?.title || 'Artigo'}": "${content.slice(0, 80)}${content.length > 80 ? '...' : ''}"`,
+          linkUrl: postSlug,
+          read: false,
+          createdAt: new Date().toISOString()
+        });
+      } catch (e) {
+        console.error('Reply notification error:', e);
+      }
     }
 
     return { success: true };
@@ -1927,7 +1924,7 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await setDoc(doc(db, 'comments', commentId), sanitizeForFirestore(updatedComment), { merge: true });
       }
     } catch (e) {
-      console.warn('Firestore deleteCommentReply note:', e);
+      reportWriteError('Exclusão da resposta', e);
     }
   };
 
@@ -1980,7 +1977,7 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await setDoc(doc(db, 'comments', commentId), sanitizeForFirestore(updatedComment), { merge: true });
       }
     } catch (e) {
-      console.warn('Firestore likeCommentReply note:', e);
+      reportWriteError('Curtida na resposta', e);
     }
   };
 
@@ -1993,7 +1990,7 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await updateDoc(doc(db, 'comments', commentId), { status: 'approved' });
     } catch (e) {
-      console.warn('Firestore approveComment note:', e);
+      reportWriteError('Aprovação do comentário', e);
     }
   };
 
@@ -2006,7 +2003,7 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await updateDoc(doc(db, 'comments', commentId), { status: 'rejected' });
     } catch (e) {
-      console.warn('Firestore rejectComment note:', e);
+      reportWriteError('Ocultação do comentário', e);
     }
   };
 
@@ -2019,7 +2016,7 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await deleteDoc(doc(db, 'comments', commentId));
     } catch (e) {
-      console.warn('Firestore deleteComment note:', e);
+      reportWriteError('Exclusão do comentário', e);
     }
   };
 
@@ -2032,7 +2029,7 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await updateDoc(doc(db, 'comments', commentId), { content: newContent.trim() });
     } catch (e) {
-      console.warn('Firestore editMyComment note:', e);
+      reportWriteError('Edição do comentário', e);
     }
   };
 
@@ -2064,7 +2061,7 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await updateDoc(doc(db, 'comments', commentId), { likes: updatedLikes });
     } catch (e) {
-      console.warn('Firestore likeComment note:', e);
+      reportWriteError('Curtida no comentário', e);
     }
   };
 
@@ -2090,10 +2087,19 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     setNewsletterSubscribers(prev => [sub, ...prev]);
 
+    // `categoryInterest` é opcional e a caixa de newsletter da home não o envia.
+    // Sem a sanitização, o campo ia como undefined, o Firestore recusava o
+    // documento e o visitante lia "Inscrição realizada com sucesso!" — toda
+    // inscrição feita pela home desde o lançamento se perdeu assim.
     try {
-      await setDoc(doc(db, 'newsletter', sub.id), sub);
+      await setDoc(doc(db, 'newsletter', sub.id), sanitizeForFirestore(sub));
     } catch (e) {
-      console.warn('Firestore subscribeNewsletter note:', e);
+      console.error('Firestore subscribeNewsletter error:', e);
+      setNewsletterSubscribers(prev => prev.filter(s => s.id !== sub.id));
+      return {
+        success: false,
+        message: 'Não foi possível concluir sua inscrição agora. Tente novamente em instantes.'
+      };
     }
 
     return {
@@ -2117,7 +2123,7 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         await deleteDoc(doc(db, 'newsletter', targetSub.id));
       } catch (e) {
-        console.warn('Firestore removeSubscriber note:', e);
+        reportWriteError('Remoção do inscrito na newsletter', e);
       }
     }
   };
@@ -2144,9 +2150,12 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
     safeSetJSON(STORAGE_KEY_SUBS, [sub, ...newsletterSubscribers]);
 
     try {
-      await setDoc(doc(db, 'newsletter', sub.id), sub);
+      await setDoc(doc(db, 'newsletter', sub.id), sanitizeForFirestore(sub));
     } catch (e) {
-      console.warn('Firestore addManualSubscriber note:', e);
+      console.error('Firestore addManualSubscriber error:', e);
+      setNewsletterSubscribers(prev => prev.filter(s => s.id !== sub.id));
+      safeSetJSON(STORAGE_KEY_SUBS, newsletterSubscribers);
+      return { success: false, message: `Não foi possível adicionar ${trimmed}. Tente novamente.` };
     }
 
     return { success: true, message: `Assinante ${trimmed} adicionado com sucesso!` };
@@ -2165,9 +2174,9 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     try {
       safeSetJSON(STORAGE_KEY_BRIEFINGS, [campaign, ...briefingCampaigns.filter(c => c.id !== campaign.id)]);
-      await setDoc(doc(db, 'briefings', campaign.id), campaign, { merge: true });
+      await setDoc(doc(db, 'briefings', campaign.id), sanitizeForFirestore(campaign), { merge: true });
     } catch (e) {
-      console.warn('Firestore saveBriefingCampaign note:', e);
+      reportWriteError('Salvamento do briefing', e);
     }
   };
 
@@ -2177,7 +2186,7 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
       safeSetJSON(STORAGE_KEY_BRIEFINGS, briefingCampaigns.filter(c => c.id !== id));
       await deleteDoc(doc(db, 'briefings', id));
     } catch (e) {
-      console.warn('Firestore deleteBriefingCampaign note:', e);
+      reportWriteError('Exclusão do briefing', e);
     }
   };
 
@@ -2204,9 +2213,14 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setContactMessages(prev => [newContact, ...prev]);
 
     try {
-      await setDoc(doc(db, 'contacts', newContact.id), newContact);
+      await setDoc(doc(db, 'contacts', newContact.id), sanitizeForFirestore(newContact));
     } catch (e) {
-      console.warn('Firestore sendContactMessage note:', e);
+      console.error('Firestore sendContactMessage error:', e);
+      setContactMessages(prev => prev.filter(m => m.id !== newContact.id));
+      return {
+        success: false,
+        message: 'Não foi possível enviar sua mensagem agora. Tente novamente em instantes.'
+      };
     }
 
     return {
@@ -2220,7 +2234,7 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await updateDoc(doc(db, 'contacts', id), { status: 'read' });
     } catch (e) {
-      console.warn('Firestore markContactRead note:', e);
+      reportWriteError('Marcar mensagem como lida', e);
     }
   };
 
@@ -2229,7 +2243,7 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await deleteDoc(doc(db, 'contacts', id));
     } catch (e) {
-      console.warn('Firestore deleteContactMessage note:', e);
+      reportWriteError('Exclusão da mensagem de contato', e);
     }
   };
 
@@ -2249,7 +2263,7 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await setDoc(doc(db, 'categories', cat.id), cat);
     } catch (e) {
-      console.warn('Firestore addCategory note:', e);
+      reportWriteError('Criação da categoria', e);
     }
   };
 
@@ -2262,7 +2276,7 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await setDoc(doc(db, 'categories', id), updates, { merge: true });
     } catch (e) {
-      console.warn('Firestore updateCategory note:', e);
+      reportWriteError('Edição da categoria', e);
     }
   };
 
@@ -2275,7 +2289,7 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await deleteDoc(doc(db, 'categories', id));
     } catch (e) {
-      console.warn('Firestore deleteCategory note:', e);
+      reportWriteError('Exclusão da categoria', e);
     }
   };
 
@@ -2290,7 +2304,7 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await setDoc(doc(db, 'settings', 'ads_config'), nextConfig, { merge: true });
     } catch (e) {
-      console.warn('Firestore updateAdConfig note:', e);
+      reportWriteError('Configuração de anúncios', e);
     }
   };
 
@@ -2305,7 +2319,7 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await setDoc(doc(db, 'settings', 'radar_config'), nextConfig, { merge: true });
     } catch (e) {
-      console.warn('Firestore updateRadarConfig note:', e);
+      reportWriteError('Radar Técnico', e);
     }
   };
 
@@ -2347,7 +2361,7 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const cleanDoc = sanitizeForFirestore(INITIAL_ABOUT_PAGE_DATA);
       await setDoc(doc(db, 'settings', 'about_page'), cleanDoc);
     } catch (e) {
-      console.warn('Firestore resetAboutData note:', e);
+      reportWriteError('Restauração da página Sobre', e);
     }
   };
 
@@ -2364,7 +2378,7 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await setDoc(doc(db, 'settings', 'contact_info'), nextData, { merge: true });
     } catch (e) {
-      console.warn('Firestore updateContactInfo note:', e);
+      reportWriteError('Dados de contato', e);
     }
   };
 
@@ -2374,7 +2388,7 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await setDoc(doc(db, 'settings', 'contact_info'), INITIAL_CONTACT_INFO);
     } catch (e) {
-      console.warn('Firestore resetContactInfo note:', e);
+      reportWriteError('Restauração dos dados de contato', e);
     }
   };
 
@@ -2433,11 +2447,20 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Save to Firestore
     try {
       await setDoc(doc(db, 'leads', leadId), sanitizeForFirestore(newLead));
-      // Register into newsletter subscriber list as well
-      await subscribeNewsletter(trimmedEmail, 'Segurança de Voo / SGSO');
     } catch (err) {
-      console.warn('Lead capture firestore note:', err);
+      console.error('Lead capture firestore error:', err);
+      setCapturedLeads(prev => prev.filter(l => l.id !== leadId));
+      return {
+        success: false,
+        isDraft: leadMaterialConfig.status === 'draft',
+        message: 'Não foi possível registrar seu cadastro agora. Tente novamente em instantes.',
+        config: leadMaterialConfig
+      };
     }
+
+    // A inscrição na newsletter é um bônus do cadastro: se falhar, o lead já
+    // está salvo (com o e-mail), então o visitante não recebe erro por isso.
+    await subscribeNewsletter(trimmedEmail, 'Segurança de Voo / SGSO');
 
     const isDraft = leadMaterialConfig.status === 'draft' || !leadMaterialConfig.fileUrl;
     return {
@@ -2455,7 +2478,7 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await deleteDoc(doc(db, 'leads', id));
     } catch (err) {
-      console.warn('Delete lead error:', err);
+      reportWriteError('Exclusão do lead', err);
     }
   };
 
@@ -2554,7 +2577,7 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
           await batch.commit();
         }
       } catch (err) {
-        console.warn('Firestore comments batch sync note:', err);
+        console.error('Firestore comments batch sync note:', err);
       }
     }
   };
@@ -2565,7 +2588,7 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await updateDoc(doc(db, 'notifications', id), { read: true });
     } catch (e) {
-      console.warn('Mark notification read note:', e);
+      reportWriteError('Notificação', e);
     }
   };
 
@@ -2578,7 +2601,7 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
       await batch.commit();
     } catch (e) {
-      console.warn('Mark all notifications read note:', e);
+      reportWriteError('Notificações', e);
     }
   };
 
@@ -2587,7 +2610,7 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await deleteDoc(doc(db, 'notifications', id));
     } catch (e) {
-      console.warn('Delete notification note:', e);
+      reportWriteError('Exclusão da notificação', e);
     }
   };
 
@@ -2681,7 +2704,7 @@ export const BlogProvider: React.FC<{ children: React.ReactNode }> = ({ children
           });
         }
       } catch (e) {
-        console.warn('Auto badge unlock error:', e);
+        console.error('Auto badge unlock error:', e);
       }
     }
   };
